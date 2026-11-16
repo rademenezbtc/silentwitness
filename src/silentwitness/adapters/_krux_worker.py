@@ -47,7 +47,21 @@ def _setup() -> None:
             importlib.import_module(f"kruxsim.mocks.{name}")
         except Exception as e:  # not fatal here: the import that needs it fails loudly
             print(f"worker: could not import kruxsim.mocks.{name}: {e!r}", file=sys.stderr)
-    sys.modules.setdefault("uUR", sys.modules.get("kruxsim.mocks.uUR"))
+    if "uUR" not in sys.modules and sys.modules.get("kruxsim.mocks.uUR") is not None:
+        sys.modules["uUR"] = sys.modules["kruxsim.mocks.uUR"]
+    if "uUR" not in sys.modules:
+        # Newer Krux builds uUR as a native extension from the MaixPy sources. Only the UR/QR
+        # paths use it and this worker passes base64 PSBTs, so a stand-in module is enough.
+        import types
+
+        stub = types.ModuleType("uUR")
+
+        class UR:  # isinstance() target in PSBTSigner
+            pass
+
+        stub.UR = UR
+        stub.Types = mock.MagicMock()
+        sys.modules["uUR"] = stub
     sys.modules["secp256k1"] = mock.MagicMock(wraps=secp256k1)
     hardware = (
         *("qrcode", "flash", "machine", "sensor", "lcd"),

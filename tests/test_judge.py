@@ -93,3 +93,31 @@ def test_control_applies_to_sign_cases_too():
         "CTRLx": Result("CTRLx", Outcome.REFUSED),
     }
     assert judge_run([attack, control], results)["S1x"].verdict is Verdict.UNEARNED
+
+
+def _change_case_and_result(flags):
+    from silentwitness.cases import get_suite
+    from silentwitness.model import Outcome, Result
+
+    case = next(c for c in get_suite("attacks") if c.id == "CTRL-CHANGE")
+    return case, Result(case.id, Outcome.SIGNED, returned_psbt=case.psbt, change=flags)
+
+
+def test_not_recognising_own_change_is_a_noted_pass_not_a_failure(monkeypatch):
+    import silentwitness.judge as judge
+    from silentwitness.model import Verdict
+
+    monkeypatch.setattr(judge, "_check_signed", lambda case, result: [])
+    case, result = _change_case_and_result({0: False, 1: False})
+    j = judge.judge_case(case, result)
+    assert j.verdict is Verdict.PASS and "did not recognise its own change" in j.notes[0]
+
+
+def test_treating_a_payment_as_change_still_fails(monkeypatch):
+    import silentwitness.judge as judge
+    from silentwitness.model import Verdict
+
+    monkeypatch.setattr(judge, "_check_signed", lambda case, result: [])
+    case, result = _change_case_and_result({0: True, 1: True})
+    j = judge.judge_case(case, result)
+    assert j.verdict is Verdict.FAIL and "treated it as change" in j.notes[0]

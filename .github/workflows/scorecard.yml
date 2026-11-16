@@ -25,7 +25,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      KRUX_COMMIT: 0bec5475c9b7a71ac26d33039e4a7af49df77131
+      # selfcustody/krux PR #925 (draft), head of notTanveer:feat/silent-payments-V2.
+      # The older selfcustody/krux feat/silent-payments @ 0bec547 was tested before.
+      KRUX_REPO: notTanveer/krux
+      KRUX_COMMIT: f13f76d3d587da966ed7ea31dba9c2163cb44876
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -34,10 +37,10 @@ jobs:
       - run: pip install -e .
       - name: Fetch Krux at the pinned commit
         run: |
-          git clone https://github.com/selfcustody/krux.git "$RUNNER_TEMP/krux"
+          git clone "https://github.com/$KRUX_REPO.git" "$RUNNER_TEMP/krux"
           git -C "$RUNNER_TEMP/krux" checkout "$KRUX_COMMIT"
-          git -C "$RUNNER_TEMP/krux" submodule update --init --depth 1 \
-            vendor/embit vendor/urtypes vendor/foundation-ur-py
+          # Only embit: the other vendored libraries are not needed to sign a PSBT.
+          git -C "$RUNNER_TEMP/krux" submodule update --init vendor/embit
       - name: Run all suites against Krux
         env:
           SW_KRUX_DIR: ${{ runner.temp }}/krux
