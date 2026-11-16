@@ -55,6 +55,8 @@ def _signer_name(run: dict) -> str:
     source = a.get("source") or ""
     if "notTanveer/embit" in source:
         return f"{name} (PR #145)"
+    if name == "krux":
+        return "Krux (PR #925)" if "notTanveer/krux" in source else "Krux"
     return name
 
 
@@ -101,6 +103,38 @@ def _counts(run: dict) -> dict[str, int]:
     for c in run["cases"]:
         out[c["verdict"]] = out.get(c["verdict"], 0) + 1
     return out
+
+
+def _verdict_chips(verdicts: list[str]) -> str:
+    """Small chips such as '2 ✕ 1 –' for the verdicts in a list, in a fixed order."""
+    out = []
+    for v in ("fail", "unearned", "skip", "pass"):
+        n = verdicts.count(v)
+        if n:
+            out.append(
+                f'<span class="chip v-{v}" title="{VERDICT[v][1]}">'
+                f'<span aria-hidden="true">{VERDICT[v][0]}</span> {n}</span>'
+            )
+    return " ".join(out)
+
+
+def _overview(runs: list[dict]) -> str:
+    """One compact row per signer under the headline, so every signer is on the first screen."""
+    rows = []
+    for run in runs:
+        a = run["adapter"]
+        slug = escape(a.get("adapter", "signer"))
+        counts = _counts(run)
+        total = len(run["cases"])
+        rows.append(
+            f'<a class="ov" href="#{slug}"><span class="ov-name">{escape(_signer_name(run))}</span>'
+            f'<span class="ov-commit">commit <code>{escape(_short(a.get("commit")))}</code></span>'
+            f'<span class="ov-tally"><strong>{counts["pass"]}</strong> of {total} correct</span>'
+            f'<span class="ov-chips">{_verdict_chips([c["verdict"] for c in run["cases"]])}</span></a>'
+        )
+    if not rows:
+        return ""
+    return f'<nav class="overview" aria-label="Signers at a glance">{"".join(rows)}</nav>'
 
 
 def _psbt_block(label: str, value: str | None) -> str:
@@ -159,12 +193,18 @@ def _signer_section(run: dict, annotations: dict) -> str:
     for c in run["cases"]:
         groups.setdefault(_group(c), []).append(c)
     tables = "".join(
-        f'<section class="group"><h3>{escape(g)} <span class="n">{len(cs)}</span></h3>'
+        f'<details class="group" open><summary><h3>{escape(g)} <span class="n">{len(cs)}</span>'
+        "</h3></summary>"
         + "".join(_case_row(c, slug, notes.get(c["id"])) for c in cs)
-        + "</section>"
+        + "</details>"
         for g, cs in groups.items()
     )
-    notable = [c for c in run["cases"] if c["verdict"] != "pass" and notes.get(c["id"])]
+    # Every case with a plain-language note, wrong results first: a pass can carry the most
+    # useful note (for example a signer that is safe for a different reason than expected).
+    order = {"fail": 0, "unearned": 1, "skip": 2, "pass": 3}
+    notable = sorted(
+        (c for c in run["cases"] if notes.get(c["id"])), key=lambda c: order.get(c["verdict"], 9)
+    )
     notable_html = "".join(
         f'<li class="v-{escape(c["verdict"])}"><a href="#{slug}-{escape(c["id"])}">'
         f'<span class="chip v-{escape(c["verdict"])}">{VERDICT[c["verdict"]][0]} '
@@ -173,6 +213,7 @@ def _signer_section(run: dict, annotations: dict) -> str:
         for c in notable
     )
     vectors = run.get("vectors", {})
+    notable_chips = _verdict_chips([c["verdict"] for c in notable])
     return f"""
 <section class="signer" id="{slug}">
   <div class="signer-id">
@@ -183,31 +224,48 @@ def _signer_section(run: dict, annotations: dict) -> str:
   <p class="tally">
     <strong>{counts["pass"]}</strong> of {total} correct,
     <strong>{counts["fail"]}</strong> wrong,
-    <strong>{counts["skip"]}</strong> not observable at library level{
+    <strong>{counts["skip"]}</strong> not observable with this adapter{
         f", <strong>{counts['unearned']}</strong> unearned" if counts.get("unearned") else ""
     }.
   </p>
+  <div class="folds">
+  {
+        f'''<details class="fold" id="{slug}-notable"><summary><span class="ftitle">Notable results</span>
+    <span class="fmeta">{len(notable)} {notable_chips}</span></summary>
+    <ul class="notable">{notable_html}</ul></details>'''
+        if notable_html
+        else ""
+    }
+  <details class="fold" id="{slug}-cases"><summary><span class="ftitle">Every case</span>
+    <span class="fmeta">{total}</span></summary>
+    <div class="case-tools">
+      <div class="filters" role="group" aria-label="Show cases">
+        <button type="button" data-filter="all" aria-pressed="true">All {total}</button>
+        <button type="button" data-filter="fail" aria-pressed="false">Wrong {
+        counts["fail"]
+    }</button>
+        <button type="button" data-filter="skip" aria-pressed="false">Not observable {
+        counts["skip"]
+    }</button>
+        <button type="button" data-filter="pass" aria-pressed="false">Correct {
+        counts["pass"]
+    }</button>
+      </div>
+      <div class="expand-ctl" role="group" aria-label="Open or close every case">
+        <button type="button" data-expand="open">Expand all</button>
+        <button type="button" data-expand="close">Collapse all</button>
+      </div>
+    </div>
+    <div class="cases">{tables}</div></details>
+  <details class="fold" id="{slug}-run"><summary><span class="ftitle">Run details</span>
+    <span class="fmeta">{escape(_date(run["written"]))}</span></summary>
   <dl class="runmeta">
     <dt>Run</dt><dd>{escape(_date(run["written"]))}</dd>
     <dt>Signer source</dt><dd><code>{escape(a.get("source") or "—")}</code></dd>
     <dt>Vectors</dt><dd>bitcoin/bips <code>{escape(_short(vectors.get("commit")))}</code></dd>
     <dt>Code path</dt><dd>{escape(a.get("path", "—"))}</dd>
-  </dl>
-  {
-        f'<h3 class="sub">Notable results</h3><ul class="notable">{notable_html}</ul>'
-        if notable_html
-        else ""
-    }
-  <h3 class="sub">Every case</h3>
-  <div class="filters" role="group" aria-label="Show cases">
-    <button type="button" data-filter="all" aria-pressed="true">All {total}</button>
-    <button type="button" data-filter="fail" aria-pressed="false">Wrong {counts["fail"]}</button>
-    <button type="button" data-filter="skip" aria-pressed="false">Not observable {
-        counts["skip"]
-    }</button>
-    <button type="button" data-filter="pass" aria-pressed="false">Correct {counts["pass"]}</button>
+  </dl></details>
   </div>
-  <div class="cases">{tables}</div>
 </section>"""
 
 
@@ -265,6 +323,41 @@ header.top{display:flex;justify-content:space-between;align-items:baseline;paddi
   color:var(--soft);font-size:.92rem}
 .runmeta dt{font-weight:600} .runmeta dd{margin:0;overflow-wrap:anywhere}
 .sub{font-size:1.1rem;margin:34px 0 12px}
+.overview{display:grid;gap:8px;margin:28px 0 0}
+.ov{display:grid;grid-template-columns:minmax(120px,1.2fr) minmax(150px,1fr) minmax(140px,1fr) 2fr;
+  gap:14px;align-items:center;padding:12px 16px;background:var(--sheet);color:var(--ink);
+  border:1px solid var(--rule);border-radius:12px;text-decoration:none}
+.ov:hover{border-color:var(--link)}
+.ov-name{font-weight:700;font-size:1.05rem}
+.ov-commit{color:var(--soft);font-size:.9rem}
+.ov-chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+.folds{margin-top:22px;display:grid;gap:10px}
+.fold{border:1px solid var(--rule);border-radius:10px;background:var(--sheet)}
+.fold>summary{display:flex;align-items:center;gap:10px;padding:11px 16px;cursor:pointer;
+  list-style:none;font-weight:650}
+.fold>summary::-webkit-details-marker{display:none}
+.fold>summary::before,.group>summary::before{content:"";width:0;height:0;flex:none;
+  border-left:6px solid var(--soft);border-top:5px solid transparent;border-bottom:5px solid transparent;
+  transition:transform .15s}
+.fold[open]>summary::before,.group[open]>summary::before{transform:rotate(90deg)}
+.fold>summary:hover{background:var(--paper);border-radius:10px}
+.fold[open]>summary{border-bottom:1px solid var(--rule);border-radius:10px 10px 0 0}
+.ftitle{flex:1}
+.fmeta{display:flex;gap:6px;align-items:center;color:var(--soft);font-weight:500;font-size:.92rem}
+.fold>:not(summary){margin-left:16px;margin-right:16px}
+.fold>:last-child{margin-bottom:16px}
+.fold>summary+*{margin-top:14px}
+.case-tools{display:flex;flex-wrap:wrap;gap:10px 24px;justify-content:space-between;align-items:center}
+.case-tools .filters{margin:0}
+.expand-ctl{display:flex;gap:8px}
+.expand-ctl button{font:inherit;font-size:.9rem;border:1px solid var(--rule);background:transparent;
+  color:var(--ink);border-radius:999px;padding:4px 14px;cursor:pointer}
+.expand-ctl button:hover{border-color:var(--link)}
+.group>summary{display:flex;align-items:center;gap:10px;cursor:pointer;list-style:none;margin:20px 0 4px}
+.group>summary::-webkit-details-marker{display:none}
+.group>summary h3{margin:0}
+.fold .runmeta{margin:0}
+.fold .notable li:first-child{border-top:0;padding-top:0}
 .notable{list-style:none;margin:0;padding:0;display:grid;gap:14px}
 .notable li{display:grid;grid-template-columns:120px 1fr;gap:16px;padding:14px 0;border-top:1px solid var(--rule)}
 .notable p{margin:0;max-width:72ch} .notable .ntitle{font-weight:600;margin-bottom:4px}
@@ -277,7 +370,7 @@ header.top{display:flex;justify-content:space-between;align-items:baseline;paddi
 .filters button{font:inherit;font-size:.9rem;border:1px solid var(--rule);background:transparent;
   color:var(--ink);border-radius:999px;padding:4px 14px;cursor:pointer}
 .filters button[aria-pressed="true"]{background:var(--ink);color:var(--sheet);border-color:var(--ink)}
-.group h3{font-size:.95rem;font-weight:650;color:var(--soft);margin:26px 0 6px}
+.group h3{font-size:.95rem;font-weight:650;color:var(--soft)}
 .group h3 .n{font-weight:400}
 .case{border-top:1px solid var(--rule)}
 .case summary{display:grid;grid-template-columns:110px 1fr 120px 190px;gap:14px;align-items:center;
@@ -310,6 +403,10 @@ footer p{max-width:72ch}
   .top nav a{margin:0 16px 0 0}
   .sg{grid-template-columns:1fr;gap:6px}
   .cell{width:24px;height:30px}
+  .ov{grid-template-columns:1fr auto;row-gap:6px}
+  .ov-commit{grid-column:1}
+  .ov-tally{grid-column:2;grid-row:1;justify-self:end}
+  .ov-chips{grid-column:1 / -1;justify-content:flex-start}
   .case summary{grid-template-columns:76px 1fr;row-gap:4px}
   .cexp{grid-column:2} .chip{justify-self:start}
   .case summary .chip{grid-column:2}
@@ -329,9 +426,14 @@ document.querySelectorAll('.filters button').forEach(b=>b.addEventListener('clic
 }));
 function openHash(){
   const el=location.hash&&document.getElementById(decodeURIComponent(location.hash.slice(1)));
-  if(el&&el.tagName==='DETAILS'){document.body.classList.remove('f-fail','f-skip','f-pass');
-    el.open=true;el.scrollIntoView({block:'start'});}
+  if(el&&el.closest('details')){document.body.classList.remove('f-fail','f-skip','f-pass');
+    for(let n=el;n;n=n.parentElement){if(n.tagName==='DETAILS')n.open=true;}
+    el.scrollIntoView({block:'start'});}
 }
+document.querySelectorAll('[data-expand]').forEach(b=>b.addEventListener('click',()=>{
+  const open=b.dataset.expand==='open';
+  b.closest('.fold').querySelectorAll('details.case,details.group').forEach(d=>{d.open=open||d.matches('.group');});
+}));
 window.addEventListener('hashchange',openHash);openHash();
 document.querySelectorAll('.copy').forEach(b=>b.addEventListener('click',async()=>{
   try{await navigator.clipboard.writeText(b.dataset.copy);b.textContent='Copied';}
@@ -369,6 +471,7 @@ def render(runs: list[dict], annotations: dict, repo: str) -> str:
   attacks a malicious wallet could try. Each cell below is one PSBT. An independent judge decides
   whether the signer did the right thing, and every result links to the exact PSBT sent and returned.</p>
 </section>
+{_overview(runs)}
 {signers}
 <section>
   <h2 class="sub">How results are judged</h2>
