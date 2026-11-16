@@ -1,8 +1,8 @@
 name: scorecard
 
-# Runs every suite against every adapter that works in CI, builds the scorecard
-# page and publishes it to GitHub Pages. Only unreleased signer code runs here;
-# released-firmware cases stay private until the disclosure policy allows.
+# Runs every suite against every adapter that works in CI (embit, Krux), builds the
+# scorecard page and publishes it to GitHub Pages. Only unreleased signer code runs
+# here; released-firmware cases stay private until the disclosure policy allows.
 
 on:
   push:
@@ -18,7 +18,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Krux is third-party code: it runs in its own job with read-only permissions and no
+  # secrets, at a pinned commit, and only its evidence (data) leaves the job. Bump
+  # KRUX_COMMIT to test a newer commit.
+  krux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KRUX_COMMIT: 0bec5475c9b7a71ac26d33039e4a7af49df77131
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - name: Fetch Krux at the pinned commit
+        run: |
+          git clone https://github.com/selfcustody/krux.git "$RUNNER_TEMP/krux"
+          git -C "$RUNNER_TEMP/krux" checkout "$KRUX_COMMIT"
+          git -C "$RUNNER_TEMP/krux" submodule update --init --depth 1 \
+            vendor/embit vendor/urtypes vendor/foundation-ur-py
+      - name: Run all suites against Krux
+        env:
+          SW_KRUX_DIR: ${{ runner.temp }}/krux
+        run: silentwitness run --adapter krux --suite all --out evidence/krux --note "CI ${{ github.sha }}" || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: krux-evidence
+          path: evidence/krux
+          retention-days: 90
+
   build:
+    needs: krux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,8 +60,12 @@ jobs:
       - name: Run all suites against embit
         # Exits non-zero when a signer fails a case; the scorecard shows it.
         run: silentwitness run --adapter embit --suite all --out evidence/ci --note "CI ${{ github.sha }}" || true
+      - uses: actions/download-artifact@v4
+        with:
+          name: krux-evidence
+          path: evidence/krux
       - name: Build scorecard
-        run: silentwitness report --evidence evidence/ci --out site
+        run: silentwitness report --evidence evidence --out site
       - uses: actions/upload-artifact@v4
         with:
           name: evidence

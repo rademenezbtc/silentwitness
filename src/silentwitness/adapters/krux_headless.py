@@ -50,7 +50,11 @@ class KruxHeadless(Adapter):
         self._home: tempfile.TemporaryDirectory | None = None
 
     def describe(self) -> dict:
-        info = {"signer": "krux", "mode": "headless PSBTSigner (hardware stubbed)"}
+        info = {
+            "adapter": "krux",
+            "signer": "krux",
+            "mode": "headless PSBTSigner (hardware stubbed)",
+        }
         try:
             info["commit"] = subprocess.run(
                 ["git", "-C", self.krux_dir, "rev-parse", "HEAD"],
