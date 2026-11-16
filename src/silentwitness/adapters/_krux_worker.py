@@ -52,9 +52,15 @@ def _setup() -> None:
     hardware = (
         *("qrcode", "flash", "machine", "sensor", "lcd"),
         *("Maix", "fpioa_manager", "pmu", "image"),
+        *("ucryptolib", "shannon", "deflate", "uos"),  # not used on the signing path
     )
     for name in hardware:
         sys.modules[name] = mock.MagicMock()
+    import time
+
+    time.sleep_ms = mock.MagicMock()
+    time.ticks_ms = mock.MagicMock(return_value=1)
+    sys.print_exception = mock.MagicMock()
     board = mock.MagicMock()
     # The m5stickv board Krux's tests use (tests/shared_mocks.py: board_m5stickv).
     board.config = {
