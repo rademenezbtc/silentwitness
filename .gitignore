@@ -1,0 +1,13 @@
+# Evidence is published selectively, never wholesale.
+evidence/*
+!evidence/README.md
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+.DS_Store

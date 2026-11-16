@@ -1,0 +1,28 @@
+{
+  "upstream": "https://github.com/bitcoin/bips",
+  "commit": "b34d9f751791d4feb22feff4f2ed00bcac83961b",
+  "fetched": "2026-11-16",
+  "files": {
+    "bip352": {
+      "path": "bip352/send_and_receive_test_vectors.json",
+      "upstream_path": "bip-0352/send_and_receive_test_vectors.json",
+      "sha256": "23cc7c3b496557970b34c0d820d412260ee1cc1f6046b2d5c0c7a016de88706c"
+    },
+    "bip374-generate": {
+      "path": "bip374/test_vectors_generate_proof.csv",
+      "upstream_path": "bip-0374/test_vectors_generate_proof.csv",
+      "sha256": "5561156242e7c293329fb778424e9810ce820b59326a448b5409756ba413a56f"
+    },
+    "bip374-verify": {
+      "path": "bip374/test_vectors_verify_proof.csv",
+      "upstream_path": "bip-0374/test_vectors_verify_proof.csv",
+      "sha256": "e3b10044308a4fe4947abc1cb0e49e02910c97a489a88f4b2dfdacd6f1a9a508"
+    },
+    "bip375": {
+      "path": "bip375/bip375_test_vectors.json",
+      "upstream_path": "bip-0375/bip375_test_vectors.json",
+      "sha256": "83d6a86cf496c5f3246f34dc932c839b4f7ef0774b125a3db54c39efa9db16b1",
+      "version": "1.1.1"
+    }
+  }
+}

@@ -1,0 +1,114 @@
+"""Minimal, dependency-free PSBTv2 reader used by the judge.
+
+The judge must not trust the signer's own PSBT code, so it reads returned PSBTs
+with this small parser instead. It only splits a PSBT into its key-value maps;
+it does not check what the fields contain.
+"""
+
+from __future__ import annotations
+
+import base64
+import binascii
+from dataclasses import dataclass
+
+MAGIC = b"psbt\xff"
+
+PSBT_GLOBAL_INPUT_COUNT = 0x04
+PSBT_GLOBAL_OUTPUT_COUNT = 0x05
+PSBT_GLOBAL_VERSION = 0xFB
+PSBT_OUT_SCRIPT = 0x04
+PSBT_OUT_SP_V0_INFO = 0x09
+PSBT_OUT_SP_V0_LABEL = 0x0A
+
+Entry = tuple[int, bytes, bytes]  # (key type, key data, value)
+
+
+class PSBTParseError(ValueError):
+    pass
+
+
+def _read_compact(buf: bytes, pos: int) -> tuple[int, int]:
+    if pos >= len(buf):
+        raise PSBTParseError("unexpected end of data")
+    first = buf[pos]
+    if first < 0xFD:
+        return first, pos + 1
+    size = {0xFD: 2, 0xFE: 4, 0xFF: 8}[first]
+    end = pos + 1 + size
+    if end > len(buf):
+        raise PSBTParseError("truncated compact size")
+    return int.from_bytes(buf[pos + 1 : end], "little"), end
+
+
+def _read_bytes(buf: bytes, pos: int, n: int) -> tuple[bytes, int]:
+    end = pos + n
+    if end > len(buf):
+        raise PSBTParseError("unexpected end of data")
+    return buf[pos:end], end
+
+
+def _read_map(buf: bytes, pos: int) -> tuple[list[Entry], int]:
+    entries: list[Entry] = []
+    while True:
+        key_len, pos = _read_compact(buf, pos)
+        if key_len == 0:
+            return entries, pos
+        key, pos = _read_bytes(buf, pos, key_len)
+        key_type, key_pos = _read_compact(key, 0)
+        value_len, pos = _read_compact(buf, pos)
+        value, pos = _read_bytes(buf, pos, value_len)
+        entries.append((key_type, key[key_pos:], value))
+
+
+def _get(entries: list[Entry], key_type: int, key_data: bytes = b"") -> bytes | None:
+    for t, k, v in entries:
+        if t == key_type and k == key_data:
+            return v
+    return None
+
+
+def _count(entries: list[Entry], key_type: int, name: str) -> int:
+    raw = _get(entries, key_type)
+    if raw is None:
+        raise PSBTParseError(f"missing {name}")
+    n, end = _read_compact(raw, 0)
+    if end != len(raw):
+        raise PSBTParseError(f"malformed {name}")
+    return n
+
+
+@dataclass
+class RawPSBT:
+    globals: list[Entry]
+    inputs: list[list[Entry]]
+    outputs: list[list[Entry]]
+
+    def output_script(self, index: int) -> bytes | None:
+        return _get(self.outputs[index], PSBT_OUT_SCRIPT)
+
+    def output_has(self, index: int, key_type: int) -> bool:
+        return any(t == key_type for t, _, _ in self.outputs[index])
+
+
+def parse(psbt_b64: str) -> RawPSBT:
+    try:
+        buf = base64.b64decode(psbt_b64, validate=True)
+    except (binascii.Error, ValueError) as e:
+        raise PSBTParseError(f"not base64: {e}") from e
+    if not buf.startswith(MAGIC):
+        raise PSBTParseError("missing PSBT magic")
+    globals_, pos = _read_map(buf, len(MAGIC))
+    version_raw = _get(globals_, PSBT_GLOBAL_VERSION)
+    version = int.from_bytes(version_raw, "little") if version_raw else 0
+    if version != 2:
+        raise PSBTParseError(f"only PSBTv2 is supported, got version {version}")
+    inputs, outputs = [], []
+    for _ in range(_count(globals_, PSBT_GLOBAL_INPUT_COUNT, "PSBT_GLOBAL_INPUT_COUNT")):
+        entries, pos = _read_map(buf, pos)
+        inputs.append(entries)
+    for _ in range(_count(globals_, PSBT_GLOBAL_OUTPUT_COUNT, "PSBT_GLOBAL_OUTPUT_COUNT")):
+        entries, pos = _read_map(buf, pos)
+        outputs.append(entries)
+    if pos != len(buf):
+        raise PSBTParseError(f"{len(buf) - pos} trailing bytes")
+    return RawPSBT(globals_, inputs, outputs)

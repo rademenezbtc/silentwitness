@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "silentwitness"
+version = "0.0.1"
+description = "Adversarial silent-payment PSBT test suite for Bitcoin hardware signers"
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "rademenezbtc" }]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+# embit with silent payments: PR diybitcoinhardware/embit#145, pinned to a commit.
+embit = [
+  "embit @ git+https://github.com/notTanveer/embit@e89d799a058163ee4751d1296d51a41ab9e8aedb",
+]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+silentwitness = "silentwitness.cli:main"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/silentwitness"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["third_party"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
