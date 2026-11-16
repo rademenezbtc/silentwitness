@@ -108,14 +108,24 @@ def judge_case(case: Case, result: Result) -> Judgement:
                     "treated as change"
                 ],
             )
+        # Treating someone else's output as change is dangerous: the user is shown a payment
+        # to a stranger as their own money. Not recognising their own change is only less
+        # convenient (BIP 375: the signer "can" use these fields to verify change), so
+        # it is noted, not failed.
         wrong = [
-            f"output {i}: signer {'treated' if result.change.get(i) else 'did not treat'} it as "
-            f"change, expected {'change' if own else 'a payment'}"
+            f"output {i}: signer treated it as change, expected a payment"
             for i, own in sorted(case.expected_change.items())
-            if bool(result.change.get(i)) is not own
+            if not own and result.change.get(i)
         ]
         if wrong:
             return Judgement(case.id, Verdict.FAIL, wrong)
+        cautious = [
+            f"output {i}: signer did not recognise its own change and shows it as a payment "
+            "(safe, optional in BIP 375)"
+            for i, own in sorted(case.expected_change.items())
+            if own and not result.change.get(i)
+        ]
+        return Judgement(case.id, Verdict.PASS, cautious)
     return Judgement(case.id, Verdict.PASS, [])
 
 

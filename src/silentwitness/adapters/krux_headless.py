@@ -56,6 +56,13 @@ class KruxHeadless(Adapter):
             "mode": "headless PSBTSigner (hardware stubbed)",
         }
         try:
+            info["source"] = subprocess.run(
+                ["git", "-C", self.krux_dir, "remote", "get-url", "origin"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=True,
+            ).stdout.strip()
             info["commit"] = subprocess.run(
                 ["git", "-C", self.krux_dir, "rev-parse", "HEAD"],
                 capture_output=True,

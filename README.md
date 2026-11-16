@@ -4,7 +4,7 @@ An open, device-independent test suite for Bitcoin hardware signers that support
 **silent payments** ([BIP 352](https://github.com/bitcoin/bips/blob/master/bip-0352.mediawiki),
 [374](https://github.com/bitcoin/bips/blob/master/bip-0374.mediawiki),
 [375](https://github.com/bitcoin/bips/blob/master/bip-0375.mediawiki),
-[376](https://bitcoin.org/bip/376/)).
+[376](https://github.com/bitcoin/bips/blob/master/bip-0376.mediawiki)).
 
 It feeds a signer crafted PSBTs as a **malicious host** would, records what the
 signer signs, refuses or shows on its screen, checks the result independently,
@@ -13,9 +13,11 @@ and keeps the evidence.
 **Scorecard: [rademenezbtc.github.io/silentwitness](https://rademenezbtc.github.io/silentwitness/)**,
 rebuilt from a fresh run on every push to `main`.
 
-> **Status: pre-alpha (week 2).** The BIP 375 baseline and the first attack
-> cases (S1–S9, P1–P5, D1–D3) run against embit. Simulators and the real-device rig
-> are next. Test keys and signet/regtest only.
+> **Status: pre-alpha.** The BIP 375 baseline and the attack cases (S1–S9, P1–P5,
+> D1–D3) run against **embit** and **Krux** in CI. The multi-party cases (S5, S8)
+> need a signer that supports other parties' inputs and are skipped on both. A
+> Coldcard simulator was tried and parked (see Targets); real devices and the
+> camera rig are next. Test keys and signet/regtest only.
 
 ## Why
 
@@ -23,8 +25,9 @@ The silent-payment specs are finished and DIY signers are about to ship support,
 but nobody independently tests how signers behave when the wallet software
 driving them is hostile. Two serious implementations shipped silent-payment bugs
 in 2026: BitBox02 firmware 9.21.0–9.26.4 let a malicious host lock funds at an
-address only the attacker could find (fixed in 9.26.5), and Sparrow 2.5.5 fixed
-a wrong input hash and wrong output ordering.
+address only the attacker could find ([fixed in 9.26.5](https://blog.bitbox.swiss/en/bitbox-08-2026-dixence-update/)),
+and [Sparrow 2.5.5](https://github.com/sparrowwallet/sparrow/releases/tag/2.5.5) fixed
+the silent payment input hash and the BIP 375 `k` ordering.
 
 SilentWitness is for:
 
@@ -76,6 +79,18 @@ pytest
 
 `silentwitness run` exits non-zero if any case fails.
 
+Krux is third-party firmware code, so run it on a machine without keys or
+credentials (CI does, in its own job). Check out a pinned commit with its
+submodules, then:
+
+```bash
+git clone https://github.com/selfcustody/krux.git && cd krux && git checkout <commit>
+git submodule update --init vendor/embit vendor/urtypes vendor/foundation-ur-py && cd ..
+SW_KRUX_DIR=$PWD/krux silentwitness run --adapter krux --suite all
+```
+
+The repository and commit CI tests are `KRUX_REPO` and `KRUX_COMMIT` in `.github/workflows/scorecard.yml`.
+
 Build the scorecard page from your runs:
 
 ```bash
@@ -92,15 +107,18 @@ Checked 16 Nov 2026.
 | embit (library behind SeedSigner, Krux, Specter DIY) | send + spend in [PR #145](https://github.com/diybitcoinhardware/embit/pull/145), unmerged | `embit` (direct Python) | **working** |
 | SeedSigner | address display ([PR #769](https://github.com/SeedSigner/seedsigner/pull/769)); sending requested in [#633](https://github.com/SeedSigner/seedsigner/issues/633) | QR rig | planned |
 | [Kern](https://github.com/odudex/Kern) (ESP32-P4) | none yet | simulator, QR rig | planned (PSBT handling first) |
-| Krux | branch `feat/silent-payments`, unreleased | `krux` (headless firmware signer in a worker process; needs `SW_KRUX_DIR`) | **working** (CI, headless firmware code) |
-| Coldcard | draft [PR #587](https://github.com/Coldcard/firmware/pull/587) | simulator / SD | planned |
+| Krux | draft [PR #925](https://github.com/selfcustody/krux/pull/925) (`notTanveer:feat/silent-payments-V2`), unreleased | `krux` (headless firmware signer in a worker process; needs `SW_KRUX_DIR`) | **working** (CI, headless firmware code) |
+| Coldcard | draft [PR #587](https://github.com/Coldcard/firmware/pull/587) | simulator / SD | tried, parked: the simulator builds on CI but its MicroPython crashes at boot (segfault); needs an older toolchain |
 | BitBox02 | send, released (9.26.5+) | USB | planned |
 
 ## Test catalogue
 
 See [docs/catalogue.md](docs/catalogue.md): the 44 BIP 375 v1.1.1 vectors plus
 sending (S1–S9), spending (P1–P5), display (D1–D4) and resource (R1–R4) cases,
-with the controls they are paired with.
+with the controls they are paired with and the status of each. D1–D3 and the
+sending, spending and baseline cases run today; D4 and R1–R4 are planned (R1–R4 need
+real devices). There are no official BIP 376 test vectors yet: the pull request adding
+them (bips #2139) was closed without merging.
 
 ## Disclosure
 
@@ -113,29 +131,36 @@ Threat model: [docs/threat-model.md](docs/threat-model.md).
 ## Safety
 
 - Public test seeds and signet/regtest only. Never real seeds or funds.
-- Run untrusted simulators on a machine with no keys or credentials.
+- Run untrusted simulators and firmware on a machine with no keys or credentials. CI
+  runs Krux in its own job with read-only permissions, no secrets and a pinned commit.
 - Every result is pinned to a signer commit and a vector commit.
 
 ## Repository layout
 
 ```
 src/silentwitness/
+  cli.py            silentwitness run / list / report / verify-vectors
   model.py          Case, Result, Verdict
   cases/            suites: bip375 vectors, attack cases, PSBT builder
-  adapters/         one thin adapter per signer
+  adapters/         one thin adapter per signer: embit_direct.py, krux_headless.py
+                    (starts _krux_worker.py in a separate process)
   judge.py          verdicts, paired controls, impact notes
   sigcheck.py       independent signature verification
   crypto.py         BIP 32/341/352 maths on vendored reference code
-  psbt_raw.py       dependency-free PSBTv2 reader and writer
+  _secp.py, tx.py   curve arithmetic and transaction serialisation
+  sp_address.py     BIP 352 address encoding, for expected screen text
+  psbt_raw.py       dependency-free PSBTv2 reader, writer and combiner
   reference.py      wrapper around the vendored BIP 375 validator
+  vectors.py        pinned upstream vectors
   evidence.py       run records
   report.py         scorecard page
-  rig/              QR camera rig for real devices (planned)
+  rig/              QR camera rig for real devices (planned, empty)
 vectors/            upstream BIP vectors, pinned by commit and sha256
 third_party/        BIP 375 reference validator, Bitcoin Core RIPEMD-160, unchanged
 evidence/           run output (git-ignored, published selectively)
 scorecard/          plain-language notes per result; site/ is the built page (git-ignored)
 docs/               threat model, disclosure policy, catalogue
+.github/workflows/  ci (tests, lint) and scorecard (embit and Krux runs, Pages deploy)
 tools/              maintenance scripts
 ```
 

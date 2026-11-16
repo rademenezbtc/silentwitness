@@ -16,7 +16,7 @@ devices loaded with the test seed.
 20 valid (14 *can finalize*, 6 *in progress*). Case ids `BIP375-I01…I24` and
 `BIP375-V01…V20` follow the order in the vector file. **Status: done.**
 
-BIP 376 vectors are added when [bips #2139](https://github.com/bitcoin/bips/pull/2139) merges.
+There are no official BIP 376 vectors yet: [bips #2139](https://github.com/bitcoin/bips/pull/2139), which added them, was closed unmerged on 2026-09-23. They will be added if and when a replacement lands.
 
 ## Controls
 
@@ -26,10 +26,10 @@ if its control passes too.
 | ID | Case | Expected | Status |
 |---|---|---|---|
 | CTRL-SEND | P2WPKH + P2TR inputs pay an `sp1` address, P2WPKH change | Sign; outputs match independent BIP 352 derivation; signatures verify | done |
-| CTRL-CHANGE | Same, with SP change (label 0) and BIP 375 change derivations | Sign; output 1 treated as change | built |
+| CTRL-CHANGE | Same, with SP change (label 0) and BIP 375 change derivations | Sign; output 1 treated as change, or shown as a payment (safe: change detection is optional in BIP 375) | done (needs an adapter that reports change) |
 | CTRL-MULTI | Two signers: the other party's input carries a correct share and proof | Sign input 0; outputs match independent derivation | built (needs a multi-party signer) |
 | CTRL-ORDER | Two same-scan outputs, `k` by sorted spend key | Sign; outputs match independent derivation | done |
-| CTRL-ORDERDESC | Same two codes listed in descending spend-key order | Sign; `k` follows sorted spend keys, not output index | done |
+| CTRL-ORDERDESC | Same two codes listed in descending spend-key order | Sign; `k` follows sorted spend keys, not output index | done. The rule is contested: BIP 375's text says sorted, a proposal to change it to output index order (bips #2256) was closed unmerged |
 | CTRL-KMAX | Exactly K_max (2,323) outputs to one scan key | Sign | done |
 | CTRL-SPEND | Spend two received SP outputs (k=0, k=1) | Sign; BIP 340 signatures verify | done |
 
