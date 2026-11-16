@@ -571,7 +571,7 @@ def _send_cases() -> list[Case]:
     cases.append(
         _case(
             "S9c3",
-            "a segwit v2 output is spent (seen only in the previous transaction) beside an sp1 output",
+            "a segwit v2 output (seen only in the previous transaction) beside an sp1 output",
             v2_nw,
             v2_nw.psbt(),
             Expect.REFUSE,
