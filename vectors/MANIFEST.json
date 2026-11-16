@@ -8,6 +8,11 @@
       "upstream_path": "bip-0352/send_and_receive_test_vectors.json",
       "sha256": "23cc7c3b496557970b34c0d820d412260ee1cc1f6046b2d5c0c7a016de88706c"
     },
+    "bip341": {
+      "path": "bip341/wallet-test-vectors.json",
+      "upstream_path": "bip-0341/wallet-test-vectors.json",
+      "sha256": "403e19fb81dd1f31e745699216308f61fb403774b2aafa87b631b8f7c042d37f"
+    },
     "bip374-generate": {
       "path": "bip374/test_vectors_generate_proof.csv",
       "upstream_path": "bip-0374/test_vectors_generate_proof.csv",

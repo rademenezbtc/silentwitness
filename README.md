@@ -10,9 +10,9 @@ It feeds a signer crafted PSBTs as a **malicious host** would, records what the
 signer signs, refuses or shows on its screen, checks the result independently,
 and keeps the evidence.
 
-> **Status: pre-alpha (week 1).** The BIP 375 baseline runs against embit.
-> Attack cases, simulators and the real-device rig are in progress. Test keys
-> and signet/regtest only.
+> **Status: pre-alpha (week 2).** The BIP 375 baseline and the first attack
+> cases (S1–S3, P1–P2) run against embit. Simulators and the real-device rig
+> are next. Test keys and signet/regtest only.
 
 ## Why
 
@@ -39,15 +39,20 @@ case generator → adapter → signer under test → adapter → judge → evide
 
 - **Cases** are PSBTs plus the outcome a correct signer must produce:
   *must refuse*, *must sign* or *must display X*. The baseline is the official
-  BIP 375 vectors; attack cases are derived from them by mutators.
+  BIP 375 vectors. Attack cases are built from public test seeds with real
+  BIP 32 origins, so the same PSBTs work on a device loaded with the test seed.
 - **Adapters** are thin, one per signer or delivery method (Python call,
   simulator script, animated QR, USB, SD card). The core works only at the PSBT
   level, so a new chip means a new adapter, not a new suite.
 - **The judge** never trusts the signer's own code. It reads returned PSBTs with
-  its own parser and re-checks every silent-payment PSBT with the official
-  BIP 375 reference validator (vendored, unchanged). A refusal only counts if
-  the signer also passes the matching valid case (*paired controls*), so a
-  signer that refuses everything cannot pass.
+  its own parser, recomputes silent-payment outputs (BIP 352), re-checks them
+  with the official BIP 375 reference validator (vendored, unchanged), and
+  verifies every signature (BIP 143 / BIP 341 sighashes, ECDSA / BIP 340).
+  The maths is checked against the official BIP 32, 341 and 352 vectors. An
+  attack case only passes if the valid case it was built from passes too
+  (*paired controls*), so a signer that refuses everything cannot pass. When a
+  signer accepts a PSBT it should refuse, the evidence records the impact:
+  were the outputs still right, and would the signatures be valid on chain?
 - **Evidence** for every run: PSBT sent, PSBT returned, outcome, verdict,
   signer version and commit, vector commit, operator notes (and later
   screenshots and video).
@@ -61,8 +66,8 @@ python -m venv .venv && . .venv/bin/activate
 pip install -e '.[dev,embit]'
 
 silentwitness verify-vectors          # pinned vectors match their sha256
-silentwitness list                    # cases in the bip375 suite
-silentwitness run --adapter embit     # run them, write evidence/<timestamp>-embit/
+silentwitness list --suite all       # bip375 vectors + attack cases
+silentwitness run --adapter embit --suite all   # writes evidence/<timestamp>-embit/
 pytest
 ```
 
@@ -84,7 +89,8 @@ Checked 16 Nov 2026.
 ## Test catalogue
 
 See [docs/catalogue.md](docs/catalogue.md): the 44 BIP 375 v1.1.1 vectors plus
-sending (S1–S9), spending (P1–P5), display (D1–D4) and resource (R1–R4) cases.
+sending (S1–S9), spending (P1–P5), display (D1–D4) and resource (R1–R4) cases,
+with the controls they are paired with.
 
 ## Disclosure
 
@@ -105,15 +111,17 @@ Threat model: [docs/threat-model.md](docs/threat-model.md).
 ```
 src/silentwitness/
   model.py          Case, Result, Verdict
-  cases/            suites: baseline vectors now, mutators next
+  cases/            suites: bip375 vectors, attack cases, PSBT builder
   adapters/         one thin adapter per signer
-  judge.py          verdicts, paired controls, independent checks
-  psbt_raw.py       dependency-free PSBTv2 reader used by the judge
+  judge.py          verdicts, paired controls, impact notes
+  sigcheck.py       independent signature verification
+  crypto.py         BIP 32/341/352 maths on vendored reference code
+  psbt_raw.py       dependency-free PSBTv2 reader and writer
   reference.py      wrapper around the vendored BIP 375 validator
   evidence.py       run records
   rig/              QR camera rig for real devices (planned)
 vectors/            upstream BIP vectors, pinned by commit and sha256
-third_party/        BIP 375 reference validator, unchanged
+third_party/        BIP 375 reference validator, Bitcoin Core RIPEMD-160, unchanged
 evidence/           run output (git-ignored, published selectively)
 scorecard/          public scorecard (planned)
 docs/               threat model, disclosure policy, catalogue

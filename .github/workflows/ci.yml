@@ -33,7 +33,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -e '.[embit]'
       - name: Run BIP 375 baseline
-        run: silentwitness run --adapter embit --out evidence/ci --note "CI ${{ github.sha }}"
+        run: silentwitness run --adapter embit --suite all --out evidence/ci --note "CI ${{ github.sha }}"
         continue-on-error: true
       - uses: actions/upload-artifact@v4
         with:

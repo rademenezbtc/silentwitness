@@ -70,3 +70,26 @@ def test_display_check():
     bad = Result(good.id, Outcome.SIGNED, returned_psbt=good.psbt, shown=["Send to bc1p..."])
     assert judge_case(shown, ok).verdict is Verdict.PASS
     assert judge_case(shown, bad).verdict is Verdict.FAIL
+
+
+def test_refusal_ok_and_change_rules():
+    _, good = _cases()
+    s2 = Case(**{**good.__dict__, "refusal_ok": True, "expected_change": {0: False}})
+    assert judge_case(s2, Result(good.id, Outcome.REFUSED)).verdict is Verdict.PASS
+    signed = Result(good.id, Outcome.SIGNED, returned_psbt=good.psbt)
+    assert judge_case(s2, signed).verdict is Verdict.SKIP  # change unknown
+    signed.change = {0: True}
+    assert judge_case(s2, signed).verdict is Verdict.FAIL
+    signed.change = {0: False}
+    assert judge_case(s2, signed).verdict is Verdict.PASS
+
+
+def test_control_applies_to_sign_cases_too():
+    _, good = _cases()
+    attack = Case(**{**good.__dict__, "id": "S1x", "control": "CTRLx"})
+    control = Case(**{**good.__dict__, "id": "CTRLx"})
+    results = {
+        "S1x": Result("S1x", Outcome.SIGNED, returned_psbt=good.psbt),
+        "CTRLx": Result("CTRLx", Outcome.REFUSED),
+    }
+    assert judge_run([attack, control], results)["S1x"].verdict is Verdict.UNEARNED

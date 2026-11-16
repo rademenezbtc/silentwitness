@@ -1,0 +1,4 @@
+# Pinned vectors and vendored code are checked by sha256 or must stay identical
+# to upstream: store them byte for byte, never convert line endings.
+vectors/** -text
+third_party/** -text

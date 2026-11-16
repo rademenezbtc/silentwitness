@@ -7,6 +7,7 @@ not match.
 | File | Upstream |
 |---|---|
 | `bip352/send_and_receive_test_vectors.json` | `bip-0352/` |
+| `bip341/wallet-test-vectors.json` | `bip-0341/` (sighash and tweak checks for the judge) |
 | `bip374/test_vectors_*_proof.csv` | `bip-0374/` (DLEQ) |
 | `bip375/bip375_test_vectors.json` | `bip-0375/`, v1.1.1 |
 

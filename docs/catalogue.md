@@ -1,6 +1,13 @@
 # Test catalogue (v0)
 
-Status: **done** = runs in the suite · **next** = weeks 2–3 · **planned** = later.
+Status: **done** = runs in the suite · **built** = case exists, needs an adapter
+that can observe the result · **next** = weeks 3–4 · **planned** = later.
+
+Suites: `bip375` (upstream vectors), `attacks` (cases below), `all`.
+Attack cases are built from public BIP 39 test mnemonics (signer: "abandon …
+about", fingerprint `73c5da0a`; host: "zoo … wrong"; recipient: "legal winner …
+yellow") with BIP 32 origins, so the same PSBTs run on simulators and real
+devices loaded with the test seed.
 
 ## Baseline: BIP 375 vectors
 
@@ -11,16 +18,25 @@ Status: **done** = runs in the suite · **next** = weeks 2–3 · **planned** = 
 
 BIP 376 vectors are added when [bips #2139](https://github.com/bitcoin/bips/pull/2139) merges.
 
-## Sending (BIP 375), malicious host
+## Controls
 
-Each case is built by a mutator from a valid vector, and that vector is its
-paired control.
+Every attack case names the valid case it was built from. An attack only passes
+if its control passes too.
 
 | ID | Case | Expected | Status |
 |---|---|---|---|
-| S1 | Output marked as own SP change (label 0) but the spend key is the host's | Treat as external payment and display it | next |
-| S2 | Change uses the user's spend key with the host's scan key (lock and ransom) | Refuse, or warn that change is not the user's | next |
-| S3 | Host lies about an input's type (wrong UTXO data) to change the input hash | Refuse | next |
+| CTRL-SEND | P2WPKH + P2TR inputs pay an `sp1` address, P2WPKH change | Sign; outputs match independent BIP 352 derivation; signatures verify | done |
+| CTRL-CHANGE | Same, with SP change (label 0) and BIP 375 change derivations | Sign; output 1 treated as change | built |
+| CTRL-SPEND | Spend two received SP outputs (k=0, k=1) | Sign; BIP 340 signatures verify | done |
+
+## Sending (BIP 375), malicious host
+
+| ID | Case | Expected | Status |
+|---|---|---|---|
+| S1 | Output marked as own SP change (label 0) but the spend key is the host's | Treat as external payment and display it | built |
+| S2 | Change uses the user's spend key with the host's scan key (lock and ransom) | Refuse, or treat as a payment, not change | built |
+| S3a | Input's non-witness UTXO forged (does not hash to the previous txid) so the input looks ineligible | Refuse | done |
+| S3b | Input's witness UTXO claims P2WSH while its non-witness UTXO says P2WPKH, dropping it from the input hash | Refuse | done |
 | S4 | `PSBT_OUT_SCRIPT` set and not matching the SP address | Refuse | planned |
 | S5 | Another signer's ECDH share with a wrong DLEQ proof | Refuse | planned |
 | S6 | Same scan key, many outputs: shuffled `k` ordering; counts near K_max (2,323) | Refuse wrong order; refuse cleanly at K_max, never crash | planned |
@@ -28,12 +44,17 @@ paired control.
 | S8 | Conflicting global and per-input ECDH shares | Refuse | planned |
 | S9 | Non-`SIGHASH_ALL`, segwit v2+ input, NUMS taproot input | Refuse | planned |
 
+Open question (S3c): the same witness-UTXO lie on an input the signer does not
+own, with no non-witness UTXO to check against. A signer cannot detect it from
+the PSBT alone; whether it should demand non-witness UTXOs for every input when
+sending to silent-payment addresses needs a rule before it becomes a case.
+
 ## Spending (BIP 376)
 
 | ID | Case | Expected | Status |
 |---|---|---|---|
-| P1 | `PSBT_IN_SP_TWEAK` not matching the output key | Refuse before signing | next |
-| P2 | Correct tweak copied from a different output | Refuse | next |
+| P1 | `PSBT_IN_SP_TWEAK` not matching the output key | Refuse before signing | done |
+| P2 | Correct tweak copied from a different output | Refuse | done |
 | P3 | Missing or wrong `PSBT_IN_SP_SPEND_BIP32_DERIVATION` | Refuse | planned |
 | P4 | Tweaked key with odd Y | Valid signature | planned |
 | P5 | SP and ordinary inputs, also paying an SP address | Valid shares and signatures | planned |

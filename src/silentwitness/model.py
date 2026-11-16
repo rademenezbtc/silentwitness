@@ -55,6 +55,10 @@ class Case:
     input_keys: dict[int, str] = field(default_factory=dict)  # input index -> privkey hex
     expected_scripts: dict[int, str] = field(default_factory=dict)  # output index -> spk hex
     expected_display: tuple[str, ...] = ()
+    seed: str | None = None  # public test mnemonic the signer holds (None: keys in input_keys)
+    signed_inputs: tuple[int, ...] = ()  # inputs a correct signer signs; the judge verifies them
+    expected_change: dict[int, bool] = field(default_factory=dict)  # output -> is own change
+    refusal_ok: bool = False  # a refusal is also a correct outcome
     meta: dict[str, Any] = field(default_factory=dict)
 
 
@@ -67,6 +71,9 @@ class Result:
     returned_psbt: str | None = None
     reason: str = ""  # refusal message, exception text, operator note
     shown: list[str] = field(default_factory=list)  # text read off the signer's screen
+    change: dict[int, bool] | None = (
+        None  # output -> signer treated it as own change; None = unknown
+    )
     duration_s: float = 0.0
     artifacts: list[str] = field(default_factory=list)  # screenshots, video, QR captures
 

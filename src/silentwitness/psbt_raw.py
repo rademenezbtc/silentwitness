@@ -1,8 +1,8 @@
-"""Minimal, dependency-free PSBTv2 reader used by the judge.
+"""Minimal, dependency-free PSBTv2 reader and writer.
 
 The judge must not trust the signer's own PSBT code, so it reads returned PSBTs
-with this small parser instead. It only splits a PSBT into its key-value maps;
-it does not check what the fields contain.
+with this small parser instead, and the case generator builds and mutates PSBTs
+with it. It only handles key-value maps; it does not check what fields contain.
 """
 
 from __future__ import annotations
@@ -13,9 +13,35 @@ from dataclasses import dataclass
 
 MAGIC = b"psbt\xff"
 
+# Global
+PSBT_GLOBAL_TX_VERSION = 0x02
+PSBT_GLOBAL_FALLBACK_LOCKTIME = 0x03
 PSBT_GLOBAL_INPUT_COUNT = 0x04
 PSBT_GLOBAL_OUTPUT_COUNT = 0x05
+PSBT_GLOBAL_SP_ECDH_SHARE = 0x07
+PSBT_GLOBAL_SP_DLEQ = 0x08
 PSBT_GLOBAL_VERSION = 0xFB
+# Input
+PSBT_IN_NON_WITNESS_UTXO = 0x00
+PSBT_IN_WITNESS_UTXO = 0x01
+PSBT_IN_PARTIAL_SIG = 0x02
+PSBT_IN_SIGHASH_TYPE = 0x03
+PSBT_IN_BIP32_DERIVATION = 0x06
+PSBT_IN_PREVIOUS_TXID = 0x0E
+PSBT_IN_OUTPUT_INDEX = 0x0F
+PSBT_IN_SEQUENCE = 0x10
+PSBT_IN_REQUIRED_TIME_LOCKTIME = 0x11
+PSBT_IN_REQUIRED_HEIGHT_LOCKTIME = 0x12
+PSBT_IN_TAP_KEY_SIG = 0x13
+PSBT_IN_TAP_BIP32_DERIVATION = 0x16
+PSBT_IN_TAP_INTERNAL_KEY = 0x17
+PSBT_IN_SP_ECDH_SHARE = 0x1D
+PSBT_IN_SP_DLEQ = 0x1E
+PSBT_IN_SP_SPEND_BIP32_DERIVATION = 0x1F  # BIP 376
+PSBT_IN_SP_TWEAK = 0x20  # BIP 376
+# Output
+PSBT_OUT_BIP32_DERIVATION = 0x02
+PSBT_OUT_AMOUNT = 0x03
 PSBT_OUT_SCRIPT = 0x04
 PSBT_OUT_SP_V0_INFO = 0x09
 PSBT_OUT_SP_V0_LABEL = 0x0A
@@ -67,6 +93,45 @@ def _get(entries: list[Entry], key_type: int, key_data: bytes = b"") -> bytes | 
     return None
 
 
+def get(entries: list[Entry], key_type: int, key_data: bytes = b"") -> bytes | None:
+    return _get(entries, key_type, key_data)
+
+
+def get_all(entries: list[Entry], key_type: int) -> list[tuple[bytes, bytes]]:
+    return [(k, v) for t, k, v in entries if t == key_type]
+
+
+def put(entries: list[Entry], key_type: int, value: bytes, key_data: bytes = b"") -> None:
+    """Set a field, replacing an existing one with the same key."""
+    remove(entries, key_type, key_data)
+    entries.append((key_type, key_data, value))
+
+
+def remove(entries: list[Entry], key_type: int, key_data: bytes | None = None) -> None:
+    """Remove a field (all fields of that type if key_data is None)."""
+    entries[:] = [
+        e for e in entries if not (e[0] == key_type and (key_data is None or e[1] == key_data))
+    ]
+
+
+def _ser_compact(n: int) -> bytes:
+    if n < 0xFD:
+        return bytes([n])
+    if n <= 0xFFFF:
+        return b"\xfd" + n.to_bytes(2, "little")
+    if n <= 0xFFFFFFFF:
+        return b"\xfe" + n.to_bytes(4, "little")
+    return b"\xff" + n.to_bytes(8, "little")
+
+
+def _ser_map(entries: list[Entry]) -> bytes:
+    out = b""
+    for t, k, v in entries:
+        key = _ser_compact(t) + k
+        out += _ser_compact(len(key)) + key + _ser_compact(len(v)) + v
+    return out + b"\x00"
+
+
 def _count(entries: list[Entry], key_type: int, name: str) -> int:
     raw = _get(entries, key_type)
     if raw is None:
@@ -88,6 +153,23 @@ class RawPSBT:
 
     def output_has(self, index: int, key_type: int) -> bool:
         return any(t == key_type for t, _, _ in self.outputs[index])
+
+    def serialize(self) -> bytes:
+        """Serialize, rewriting the input and output counts to match the maps."""
+        put(self.globals, PSBT_GLOBAL_INPUT_COUNT, _ser_compact(len(self.inputs)))
+        put(self.globals, PSBT_GLOBAL_OUTPUT_COUNT, _ser_compact(len(self.outputs)))
+        out = MAGIC + _ser_map(self.globals)
+        for m in self.inputs + self.outputs:
+            out += _ser_map(m)
+        return out
+
+    def to_base64(self) -> str:
+        return base64.b64encode(self.serialize()).decode()
+
+    def copy(self) -> RawPSBT:
+        return RawPSBT(
+            list(self.globals), [list(m) for m in self.inputs], [list(m) for m in self.outputs]
+        )
 
 
 def parse(psbt_b64: str) -> RawPSBT:

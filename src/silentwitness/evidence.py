@@ -68,6 +68,8 @@ def write_run(
                 "sent_psbt": case.psbt,
                 "returned_psbt": r.returned_psbt,
                 "shown": r.shown,
+                "change": r.change,
+                "control": case.control,
                 "artifacts": r.artifacts,
             }
         )
@@ -86,7 +88,7 @@ def write_run(
     ]
     for c in record["cases"]:
         detail = "; ".join(c["notes"]) or c["reason"]
-        detail = detail.replace("|", "\\|")[:120]
+        detail = detail.replace("|", "\\|")[:400]
         lines.append(
             f"| {c['id']} | {c['expect']} | {c['outcome']} | **{c['verdict']}** | {detail} |"
         )

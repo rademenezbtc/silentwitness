@@ -23,6 +23,7 @@ FILES = {
         "bip-0352/send_and_receive_test_vectors.json",
         "bip352/send_and_receive_test_vectors.json",
     ),
+    "bip341": ("bip-0341/wallet-test-vectors.json", "bip341/wallet-test-vectors.json"),
     "bip374-generate": (
         "bip-0374/test_vectors_generate_proof.csv",
         "bip374/test_vectors_generate_proof.csv",

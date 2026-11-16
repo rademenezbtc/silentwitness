@@ -2,24 +2,30 @@
 
 Rules:
 - A crash is always a fail. A signer must refuse bad input cleanly.
-- A refusal only earns a pass if the signer also passes the paired control: the
-  valid case built the same way. A signer that refuses everything cannot pass.
-  Upstream vectors have no pairs, so for them the control is "at least one valid
-  vector from the same source passed".
+- A case with a paired control only passes if the control passes too: the
+  valid case it was built from. A signer that refuses everything, or treats
+  nothing as change, cannot pass. Upstream vectors have no pairs, so a refusal
+  of one only counts if at least one valid vector from the same source passed.
 - Signed PSBTs are read with silentwitness.psbt_raw, never with the signer's
   own library, and every expected output script is compared byte for byte.
 - Every signed PSBT with silent-payment outputs must also pass the official
   BIP 375 reference validator (vendored in third_party/), which recomputes
   output scripts and checks ECDH coverage and DLEQ proofs.
 
-Not yet done: BIP 376 spending checks and signature verification.
+- Every input a correct signer must sign is verified: BIP 143 / BIP 341
+  signature hashes recomputed, ECDSA / BIP 340 signatures checked
+  (silentwitness.sigcheck).
+- Change classification can only be judged if the adapter reports it;
+  otherwise the case is skipped, never passed.
 """
 
 from __future__ import annotations
 
+from . import psbt_raw as pr
 from .model import Case, Expect, Judgement, Outcome, Result, Verdict
 from .psbt_raw import PSBT_OUT_SP_V0_INFO, PSBTParseError, parse
 from .reference import validate as reference_validate
+from .sigcheck import check_signatures
 
 
 def _check_signed(case: Case, result: Result) -> list[str]:
@@ -43,6 +49,8 @@ def _check_signed(case: Case, result: Result) -> list[str]:
         ok, msg = reference_validate(result.returned_psbt)
         if not ok:
             problems.append(f"BIP 375 reference validator: {msg}")
+    if case.signed_inputs:
+        problems += check_signatures(raw, case.signed_inputs)
     return problems
 
 
@@ -63,17 +71,75 @@ def judge_case(case: Case, result: Result) -> Judgement:
         if result.returned_psbt:
             ok, msg = reference_validate(result.returned_psbt)
             notes.append(
-                "returned PSBT passes the BIP 375 reference validator (bad fields replaced)"
+                "returned PSBT passes the BIP 375 reference validator"
                 if ok
                 else f"returned PSBT fails the BIP 375 reference validator: {msg}"
             )
         return Judgement(case.id, Verdict.FAIL, notes)
     if result.outcome is Outcome.REFUSED:
+        if case.refusal_ok:
+            return Judgement(case.id, Verdict.PASS, [f"refused (allowed): {result.reason}"])
         return Judgement(case.id, Verdict.FAIL, [f"refused a valid PSBT: {result.reason}"])
     problems = _check_signed(case, result)
     if case.expect is Expect.DISPLAY:
         problems += _check_display(case, result)
-    return Judgement(case.id, Verdict.FAIL if problems else Verdict.PASS, problems)
+    if problems:
+        return Judgement(case.id, Verdict.FAIL, problems)
+    if case.expected_change:
+        if result.change is None:
+            return Judgement(
+                case.id,
+                Verdict.SKIP,
+                [
+                    "signed correctly, but the adapter cannot report which outputs the signer "
+                    "treated as change"
+                ],
+            )
+        wrong = [
+            f"output {i}: signer {'treated' if result.change.get(i) else 'did not treat'} it as "
+            f"change, expected {'change' if own else 'a payment'}"
+            for i, own in sorted(case.expected_change.items())
+            if bool(result.change.get(i)) is not own
+        ]
+        if wrong:
+            return Judgement(case.id, Verdict.FAIL, wrong)
+    return Judgement(case.id, Verdict.PASS, [])
+
+
+def impact(case: Case, control: Case, result: Result) -> list[str]:
+    """For a PSBT the signer should have refused but signed: compared with the
+    valid control it was built from, did the signer derive the right outputs,
+    and would its signatures be valid against the real (control) UTXO data?"""
+    try:
+        ret = parse(result.returned_psbt)
+        honest = parse(control.psbt)
+    except (PSBTParseError, TypeError):
+        return []
+    notes = []
+    for idx, want in sorted(control.expected_scripts.items()):
+        got = ret.output_script(idx) if idx < len(ret.outputs) else None
+        if got is not None and got.hex() != want:
+            notes.append(f"impact: output {idx} differs from the correct silent-payment derivation")
+        elif got is not None:
+            notes.append(f"impact: output {idx} matches the correct derivation")
+    if len(ret.inputs) == len(honest.inputs) and control.signed_inputs:
+        fixed = ret.copy()
+        for i, m in enumerate(fixed.inputs):
+            for t in (pr.PSBT_IN_WITNESS_UTXO, pr.PSBT_IN_NON_WITNESS_UTXO):
+                v = pr.get(honest.inputs[i], t)
+                if v is not None:
+                    pr.put(m, t, v)
+        signed = tuple(
+            i
+            for i, m in enumerate(ret.inputs)
+            if pr.get_all(m, pr.PSBT_IN_PARTIAL_SIG) or pr.get(m, pr.PSBT_IN_TAP_KEY_SIG)
+        )
+        bad = check_signatures(fixed, signed)
+        notes.append(
+            f"impact: {len(signed)} input(s) signed; "
+            + ("signatures valid against the real UTXOs" if not bad else "; ".join(bad))
+        )
+    return notes
 
 
 def judge_run(cases: list[Case], results: dict[str, Result]) -> dict[str, Judgement]:
@@ -90,14 +156,22 @@ def judge_run(cases: list[Case], results: dict[str, Result]) -> dict[str, Judgem
 
     for cid, j in judgements.items():
         case = by_id[cid]
-        if case.expect is not Expect.REFUSE or j.verdict is not Verdict.PASS:
+        r = results[cid]
+        if (
+            case.expect is Expect.REFUSE
+            and r.outcome is Outcome.SIGNED
+            and r.returned_psbt
+            and case.control in by_id
+        ):
+            j.notes += impact(case, by_id[case.control], r)
+        if j.verdict is not Verdict.PASS:
             continue
         if case.control is not None:
             control = judgements.get(case.control)
             if control is None or control.verdict is not Verdict.PASS:
                 j.verdict = Verdict.UNEARNED
                 j.notes.append(f"paired control {case.control} did not pass")
-        elif not passed_valid(case.source):
+        elif case.expect is Expect.REFUSE and not passed_valid(case.source):
             j.verdict = Verdict.UNEARNED
             j.notes.append(
                 f"no valid case from {case.source} passed, so this refusal proves nothing"
