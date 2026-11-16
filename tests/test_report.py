@@ -52,3 +52,93 @@ def test_page_escapes_and_links(tmp_path):
 def test_empty_evidence(tmp_path):
     html = build(tmp_path, tmp_path / "site", tmp_path / "none.json", "https://x").read_text()
     assert "No runs yet" in html
+
+
+def _two_runs():
+    def case(cid, verdict, source="silentwitness-attacks-v0"):
+        return {
+            "id": cid,
+            "title": f"title {cid}",
+            "source": source,
+            "rule": "r",
+            "expect": "must_sign",
+            "outcome": "signed",
+            "verdict": verdict,
+            "reason": "",
+            "notes": [],
+            "sent_psbt": "AAAA",
+            "returned_psbt": None,
+        }
+
+    def run(adapter, signer, source):
+        return {
+            "adapter": {
+                "adapter": adapter,
+                "signer": signer,
+                "source": source,
+                "commit": "abc1234",
+            },
+            "written": "2026-11-16T10:00:00+00:00",
+            "vectors": {"commit": "def5678"},
+            "cases": [case("S1", "fail"), case("S2", "pass"), case("S3", "skip")],
+        }
+
+    return [
+        run("embit", "embit", "https://github.com/notTanveer/embit.git"),
+        run("krux", "krux", "https://github.com/notTanveer/krux.git"),
+    ]
+
+
+def test_every_signer_is_in_the_overview_and_cases_sit_inside_folds():
+    from html.parser import HTMLParser
+
+    from silentwitness.report import render
+
+    notes = {"krux": {"S1": "a note"}}
+    page = render(_two_runs(), notes, "https://example.test/repo")
+
+    class P(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.stack, self.cases_in_fold, self.cases, self.overview = [], 0, 0, []
+
+        def handle_starttag(self, tag, attrs):
+            a = dict(attrs)
+            self.stack.append((tag, a.get("class", "")))
+            if tag == "a" and "ov" in a.get("class", "").split():
+                self.overview.append(a.get("href"))
+            if tag == "details" and "case" in a.get("class", "").split():
+                self.cases += 1
+                if any(t == "details" and "fold" in c.split() for t, c in self.stack[:-1]):
+                    self.cases_in_fold += 1
+
+        def handle_endtag(self, tag):
+            while self.stack and self.stack.pop()[0] != tag:
+                pass
+
+    p = P()
+    p.feed(page)
+    assert p.overview == ["#embit", "#krux"]  # both signers up front, linked to their cards
+    assert p.cases == 6 and p.cases_in_fold == 6  # every case is inside a fold
+    assert 'id="krux-notable"' in page and 'id="embit-notable"' not in page  # only with notes
+    assert 'id="krux-cases"' in page and 'id="embit-cases"' in page
+    assert "Krux (PR #925)" in page and "embit (PR #145)" in page
+    assert "not observable with this adapter" in page and "at library level" not in page
+
+
+def test_deep_links_open_enclosing_folds():
+    from silentwitness.report import JS
+
+    assert "el.closest('details')" in JS and "n.tagName==='DETAILS'" in JS
+    assert "data-expand" in JS
+
+
+def test_notable_results_include_annotated_passes_with_wrong_results_first():
+    from silentwitness.report import render
+
+    runs = _two_runs()
+    notes = {"krux": {"S2": "a pass with a note", "S1": "a failure"}}
+    page = render(runs, notes, "https://example.test/repo")
+    krux = page[page.index('id="krux-notable"') : page.index('id="krux-cases"')]
+    assert "a pass with a note" in krux and "a failure" in krux
+    assert krux.index("a failure") < krux.index("a pass with a note")
