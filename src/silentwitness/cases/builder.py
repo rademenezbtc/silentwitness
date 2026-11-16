@@ -42,6 +42,8 @@ RECIPIENT_MNEMONIC = "legal winner thank year wave sausage worth useful legal wi
 SCAN_PATH = "m/352h/1h/0h/1h/0"
 SPEND_PATH = "m/352h/1h/0h/0h/0"
 SEQUENCE = 0xFFFFFFFD
+# BIP 341's NUMS point H: a taproot input with this internal key is not eligible (BIP 352)
+NUMS_H = bytes.fromhex("50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0")
 
 
 class Party:
@@ -69,6 +71,7 @@ class _Input:
     a: int  # BIP 352 private key contribution (even-Y where taproot)
     outpoint: bytes
     tweak: int | None = None  # BIP 376 tweak, for SP-received inputs
+    eligible: bool = True  # False: not part of the BIP 352 shared secret (NUMS, segwit v2+...)
 
 
 class Scenario:
@@ -143,6 +146,26 @@ class Scenario:
         pr.put(e, pr.PSBT_IN_TAP_INTERNAL_KEY, internal)
         op = self._outpoint(e, tx)
         self.inputs.append(_Input(e, even_y_priv(q_priv), op))
+        return len(self.inputs) - 1
+
+    def add_ineligible(self, kind: str, amount: int) -> int:
+        """Another party's input that BIP 352 leaves out of the shared secret.
+
+        kind "nums": P2TR whose internal key is the NUMS point H (script-path only).
+        kind "v2": a witness v2 output, which BIP 352 does not know."""
+        seed = sha256(f"silentwitness/ineligible/{self.tag}/{kind}/{len(self.inputs)}".encode())
+        e: list[pr.Entry] = []
+        if kind == "nums":
+            spk = p2tr_script(seed)  # any 32 bytes: the output key of a script-path-only output
+            pr.put(e, pr.PSBT_IN_TAP_INTERNAL_KEY, NUMS_H)
+        elif kind == "v2":
+            spk = b"\x52\x20" + seed
+        else:
+            raise ValueError(kind)
+        tx = self._funding(amount, spk)
+        pr.put(e, pr.PSBT_IN_WITNESS_UTXO, TxOut(amount, spk).serialize())
+        op = self._outpoint(e, tx)
+        self.inputs.append(_Input(e, 0, op, eligible=False))
         return len(self.inputs) - 1
 
     def add_sp_received(self, amount: int, k: int, label: int | None = None) -> int:
@@ -240,10 +263,11 @@ class Scenario:
         )
 
     def expected_scripts(self) -> dict[int, str]:
-        """BIP 352/375 output scripts for every SP output (all inputs are eligible)."""
+        """BIP 352/375 output scripts for every SP output. Only eligible inputs add their
+        key to the shared secret; the smallest outpoint is taken over all inputs."""
         if not self.codes:
             return {}
-        a_sum = sum(i.a for i in self.inputs) % N
+        a_sum = sum(i.a for i in self.inputs if i.eligible) % N
         idx = sorted(self.codes)
         keys = sp_output_keys(
             a_sum, [i.outpoint for i in self.inputs], [self.codes[i] for i in idx]

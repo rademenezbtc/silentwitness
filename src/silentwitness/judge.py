@@ -45,7 +45,9 @@ def _check_signed(case: Case, result: Result) -> list[str]:
             problems.append(f"output {idx}: no PSBT_OUT_SCRIPT")
         elif got.hex() != want.lower():
             problems.append(f"output {idx}: script {got.hex()} != expected {want.lower()}")
-    if any(raw.output_has(i, PSBT_OUT_SP_V0_INFO) for i in range(len(raw.outputs))):
+    if case.meta.get("reference_validator", True) and any(
+        raw.output_has(i, PSBT_OUT_SP_V0_INFO) for i in range(len(raw.outputs))
+    ):
         ok, msg = reference_validate(result.returned_psbt)
         if not ok:
             problems.append(f"BIP 375 reference validator: {msg}")
@@ -54,9 +56,14 @@ def _check_signed(case: Case, result: Result) -> list[str]:
     return problems
 
 
+def _squash(text: str) -> str:
+    """Screens split addresses into groups and use thin spaces; compare without whitespace."""
+    return "".join(text.split())
+
+
 def _check_display(case: Case, result: Result) -> list[str]:
-    shown = "\n".join(result.shown)
-    return [f"screen did not show {s!r}" for s in case.expected_display if s not in shown]
+    shown = _squash("\n".join(result.shown))
+    return [f"screen did not show {s!r}" for s in case.expected_display if _squash(s) not in shown]
 
 
 def judge_case(case: Case, result: Result) -> Judgement:
@@ -80,6 +87,12 @@ def judge_case(case: Case, result: Result) -> Judgement:
         if case.refusal_ok:
             return Judgement(case.id, Verdict.PASS, [f"refused (allowed): {result.reason}"])
         return Judgement(case.id, Verdict.FAIL, [f"refused a valid PSBT: {result.reason}"])
+    if case.expect is Expect.DISPLAY and not result.shown:
+        return Judgement(
+            case.id,
+            Verdict.SKIP,
+            ["the adapter cannot read what the signer shows on its screen"],
+        )
     problems = _check_signed(case, result)
     if case.expect is Expect.DISPLAY:
         problems += _check_display(case, result)

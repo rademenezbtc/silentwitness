@@ -14,7 +14,7 @@ and keeps the evidence.
 rebuilt from a fresh run on every push to `main`.
 
 > **Status: pre-alpha (week 2).** The BIP 375 baseline and the first attack
-> cases (S1–S4, S6–S7, S8, S9a–b, P1–P5) run against embit. Simulators and the real-device rig
+> cases (S1–S9, P1–P5, D1–D3) run against embit. Simulators and the real-device rig
 > are next. Test keys and signet/regtest only.
 
 ## Why

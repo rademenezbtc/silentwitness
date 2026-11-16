@@ -48,7 +48,9 @@ if its control passes too.
 | S7 | Own output with the largest label, m = 0xFFFFFFFF | Sign; labeled key derived correctly. Only m = 0 is change (BIP 352), so this is a self-transfer | done |
 | S8 | Global ECDH share, valid proof, that covers only the other party's input | Refuse | built (needs a multi-party signer) |
 | S9a, S9b | `SIGHASH_NONE` and `SIGHASH_ALL\|ANYONECANPAY` on an input | Refuse | done |
-| S9c | Segwit v2+ input, NUMS taproot input | Refuse | planned |
+| S9c1 | NUMS-key taproot input beside the signer's own | Sign; only eligible inputs feed the shared secret, outpoint_L spans all | done |
+| S9c2 | Input spending a segwit v2 output while paying an sp1 address | Refuse (BIP 375: the Signer must fail) | done |
+| S9d | Host marks the signer's own taproot input as NUMS | Sign with the own input counted, or refuse | done |
 
 Labels above 2^32 cannot be encoded in the 4-byte field; a wrong-length label is already covered by the BIP 375 baseline vectors, so S7 tests the valid edge.
 
@@ -71,9 +73,9 @@ sending to silent-payment addresses needs a rule before it becomes a case.
 
 | ID | Case | Expected | Status |
 |---|---|---|---|
-| D1 | Payment to an `sp1` address | Screen shows the `sp1` address, not only `bc1p` | planned |
-| D2 | Own SP change next to an external SP payment | Clearly told apart | planned |
-| D3 | Labeled SP address | Label or full address shown | planned |
+| D1 | Payment to an `sp1` address | Screen shows the `sp1` address, not only `bc1p` | done (adapters that report their screen) |
+| D2 | Own SP change next to an external SP payment | Payment and change addresses both shown; "told apart" is checked by the change flag (S1, S2, CTRL-CHANGE) | done (adapters that report their screen) |
+| D3 | Labeled SP address | Label or full address shown | done (adapters that report their screen) |
 | D4 | Amounts and fee when the signer fills in output scripts | Correct | planned |
 
 ## Resources (real devices only)
