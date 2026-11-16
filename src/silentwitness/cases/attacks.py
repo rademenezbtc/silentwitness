@@ -275,6 +275,28 @@ def _send_cases() -> list[Case]:
             expected_scripts=order.expected_scripts(),
         )
     )
+    # Same two codes, outputs listed in descending spend-key order. BIP 375 assigns k by
+    # the sorted order of the codes, not by output index, so the scripts are the same
+    # ones swapped between the two outputs. A signer that assigns k by index gets this wrong.
+    desc = Scenario("order-desc")
+    desc.add_p2wpkh(IN_P2WPKH, 100_000)
+    desc.add_p2wpkh(IN_P2WPKH_2, 50_000)
+    desc.pay_sp(RECIPIENT.scan, spends[1], 70_000)
+    desc.pay_sp(RECIPIENT.scan, spends[0], 70_000)
+    desc.pay_p2wpkh_change(CHANGE_P2WPKH, 9_000)
+    cases.append(
+        _case(
+            "CTRL-ORDERDESC",
+            "valid: two same-scan sp1 outputs listed in descending spend-key order",
+            desc,
+            desc.psbt(),
+            Expect.SIGN,
+            rule="BIP 375 Signer: k follows the sorted spend keys, not the output index",
+            signed_inputs=(0, 1),
+            expected_scripts=desc.expected_scripts(),
+        )
+    )
+
     right = order.expected_scripts()
     s6b = order.psbt()
     pr.put(s6b.outputs[0], pr.PSBT_OUT_SCRIPT, bytes.fromhex(right[1]))

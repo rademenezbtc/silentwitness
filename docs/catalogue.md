@@ -29,6 +29,7 @@ if its control passes too.
 | CTRL-CHANGE | Same, with SP change (label 0) and BIP 375 change derivations | Sign; output 1 treated as change | built |
 | CTRL-MULTI | Two signers: the other party's input carries a correct share and proof | Sign input 0; outputs match independent derivation | built (needs a multi-party signer) |
 | CTRL-ORDER | Two same-scan outputs, `k` by sorted spend key | Sign; outputs match independent derivation | done |
+| CTRL-ORDERDESC | Same two codes listed in descending spend-key order | Sign; `k` follows sorted spend keys, not output index | done |
 | CTRL-KMAX | Exactly K_max (2,323) outputs to one scan key | Sign | done |
 | CTRL-SPEND | Spend two received SP outputs (k=0, k=1) | Sign; BIP 340 signatures verify | done |
 

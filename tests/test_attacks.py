@@ -145,3 +145,21 @@ def test_s7_uses_the_largest_label():
     spend = pr.get(s7.outputs[1], pr.PSBT_OUT_SP_V0_INFO)[33:]
     assert spend == USER.labeled_spend(0xFFFFFFFF)
     assert not _by_id()["S7"].expected_change  # label != 0 is a self-transfer, not change
+
+
+def test_descending_order_control_lists_outputs_in_descending_spend_order():
+    desc = _by_id()["CTRL-ORDERDESC"]
+    spends = [pr.get(o, pr.PSBT_OUT_SP_V0_INFO)[33:] for o in pr.parse(desc.psbt).outputs[:2]]
+    assert spends == sorted(spends, reverse=True)
+    assert len(desc.expected_scripts) == 2
+
+
+def test_k_follows_sorted_spend_keys_not_output_index():
+    from silentwitness.crypto import sp_output_keys
+    from silentwitness.cases.builder import RECIPIENT
+
+    lo, hi = sorted([RECIPIENT.spend, RECIPIENT.labeled_spend(1)])
+    outpoints = [bytes(36)]
+    asc = sp_output_keys(7, outpoints, [(RECIPIENT.scan, lo), (RECIPIENT.scan, hi)])
+    desc = sp_output_keys(7, outpoints, [(RECIPIENT.scan, hi), (RECIPIENT.scan, lo)])
+    assert asc == [desc[1], desc[0]]  # each code keeps its k whatever its output position
