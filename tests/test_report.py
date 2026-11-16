@@ -142,3 +142,16 @@ def test_notable_results_include_annotated_passes_with_wrong_results_first():
     krux = page[page.index('id="krux-notable"') : page.index('id="krux-cases"')]
     assert "a pass with a note" in krux and "a failure" in krux
     assert krux.index("a failure") < krux.index("a pass with a note")
+
+
+def test_theme_switch_follows_the_system_and_remembers_the_choice():
+    from silentwitness.report import CSS, render
+
+    page = render(_two_runs(), {}, "https://example.test/repo")
+    assert 'id="theme-toggle"' in page
+    assert "localStorage.getItem('sw-theme')" in page  # applied before first paint
+    assert "localStorage.setItem('sw-theme'" in page
+    assert ':root[data-theme="dark"]' in CSS and ':root:not([data-theme="light"])' in CSS
+    # An explicit choice beats the system setting in both directions.
+    assert CSS.count("--paper:#141a21") == 2 and CSS.count("--paper:#f4f6f8") == 1
+    assert page.index("sw-theme") < page.index("<style>")  # no flash of the wrong theme
