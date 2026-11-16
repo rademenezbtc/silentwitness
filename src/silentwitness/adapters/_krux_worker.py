@@ -45,7 +45,7 @@ def _setup() -> None:
     for name in ("ujson", "urandom", "usys", "utime", "uhashlib_hw", "baseconv", "uUR"):
         try:
             importlib.import_module(f"kruxsim.mocks.{name}")
-        except Exception as e:  # reported on stderr, not fatal: the import that needs it will fail loudly
+        except Exception as e:  # not fatal here: the import that needs it fails loudly
             print(f"worker: could not import kruxsim.mocks.{name}: {e!r}", file=sys.stderr)
     sys.modules.setdefault("uUR", sys.modules.get("kruxsim.mocks.uUR"))
     sys.modules["secp256k1"] = mock.MagicMock(wraps=secp256k1)
@@ -56,7 +56,14 @@ def _setup() -> None:
     for name in hardware:
         sys.modules[name] = mock.MagicMock()
     board = mock.MagicMock()
-    board.config = {"type": "m5stickv"}
+    # The m5stickv shape Krux's tests use (tests/shared_mocks.py: board_m5stickv).
+    board.config = {
+        "type": "m5stickv",
+        "krux": {
+            "pins": {"BUTTON_A": 36, "BUTTON_B": 37, "LED_W": 7},
+            "display": {"touch": False, "font": [8, 14], "font_wide": [14, 14]},
+        },
+    }
     sys.modules["board"] = board
 
 
