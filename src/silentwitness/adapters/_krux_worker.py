@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import traceback
 from unittest import mock
 
 
@@ -35,13 +36,18 @@ def _setup() -> None:
     ):
         sys.path.insert(0, os.path.join(root, rel))
 
-    import random
+    import importlib
 
     from embit.util import secp256k1
-    from kruxsim.mocks import uUR as uur_shim
 
-    sys.modules["uUR"] = uur_shim
-    sys.modules["urandom"] = random
+    # Krux's simulator mocks register themselves in sys.modules when imported
+    # (ujson, urandom, uUR...). Import the ones the signer path needs.
+    for name in ("ujson", "urandom", "usys", "utime", "uhashlib_hw", "baseconv", "uUR"):
+        try:
+            importlib.import_module(f"kruxsim.mocks.{name}")
+        except Exception as e:  # reported on stderr, not fatal: the import that needs it will fail loudly
+            print(f"worker: could not import kruxsim.mocks.{name}: {e!r}", file=sys.stderr)
+    sys.modules.setdefault("uUR", sys.modules.get("kruxsim.mocks.uUR"))
     sys.modules["secp256k1"] = mock.MagicMock(wraps=secp256k1)
     hardware = (
         *("qrcode", "flash", "machine", "sensor", "lcd"),
@@ -52,6 +58,12 @@ def _setup() -> None:
     board = mock.MagicMock()
     board.config = {"type": "m5stickv"}
     sys.modules["board"] = board
+
+
+def _where() -> str:
+    """Last frames of the current traceback, so a crash says where it happened."""
+    frames = traceback.extract_tb(sys.exc_info()[2])[-3:]
+    return " > ".join(f"{os.path.basename(f.filename)}:{f.lineno}" for f in frames)
 
 
 def _handle(req: dict) -> dict:
@@ -101,7 +113,7 @@ def _handle(req: dict) -> dict:
     except ValueError as e:
         out.update(outcome="refused", reason=f"ValueError: {e}")
     except Exception as e:
-        out.update(outcome="crashed", reason=f"{type(e).__name__}: {e}")
+        out.update(outcome="crashed", reason=f"{type(e).__name__}: {e} @ {_where()}")
     return out
 
 
@@ -118,7 +130,7 @@ def main() -> None:
             resp = {
                 "id": req.get("id"),
                 "outcome": "crashed",
-                "reason": f"{type(e).__name__}: {e}",
+                "reason": f"{type(e).__name__}: {e} @ {_where()}",
             }
         sys.stdout.write(json.dumps(resp) + "\n")
         sys.stdout.flush()

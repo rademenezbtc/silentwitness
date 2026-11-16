@@ -81,7 +81,7 @@ class KruxHeadless(Adapter):
             [sys.executable, "-I", str(self.worker)],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=None,
             text=True,
             env=env,
             cwd=self._home.name,
