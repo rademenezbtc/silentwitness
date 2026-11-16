@@ -7,7 +7,9 @@
     "S3b": "embit trusted the false witness UTXO, left the input out of the BIP 352 input set and computed a silent-payment output the recipient can never find. In this case its signatures are also invalid against the real UTXOs, so the transaction could not be broadcast. The BIP 375 reference validator accepts the result too, which suggests a new invalid test vector.",
     "CTRL-CHANGE": "Signed correctly. embit's silent-payments code does not decide which outputs are the user's change, so change handling can only be judged on the devices built on it.",
     "S1": "Signed with correct outputs. Whether the host's output would be shown as change cannot be seen at library level: embit leaves change detection to the device.",
-    "S2": "Signed with correct outputs. Whether the lock-and-ransom output would be shown as change cannot be seen at library level: embit leaves change detection to the device."
+    "S2": "Signed with correct outputs. Whether the lock-and-ransom output would be shown as change cannot be seen at library level: embit leaves change detection to the device.",
+    "S9c1": "embit stops with its multi-party message and reports input 1 as belonging to another signer. This case has one signer and a NUMS taproot input that needs no share, so it is recorded as a skip, not a pass.",
+    "S9d": "embit counts its own input despite the host's NUMS claim: the outputs and signatures are correct. The BIP 375 reference validator is not applied to this case, because the returned PSBT still carries the host's NUMS marking and the validator would drop that input."
   },
   "krux": {
     "CTRL-ORDERDESC": "Krux gives the k values to same-scan outputs in output order. BIP 375 says to sort the codes by spend key first, so when the outputs are listed in descending spend-key order Krux's scripts are swapped and the BIP 375 reference validator rejects the PSBT it returns. A BIP 352 recipient still finds the funds, because it tries every k, so this is an interoperability and conformance issue, not a loss of funds. It matters when another signer or validator checks Krux's output scripts.",
@@ -18,6 +20,11 @@
     "CTRL-MIXED": "Skipped: Krux accepts one script type per transaction, so it refuses P2WPKH and P2TR inputs together. A missing feature, not a verdict.",
     "P5": "Skipped for the same reason as CTRL-MIXED: this case mixes a silent-payment (P2TR) input with an ordinary P2WPKH input.",
     "CTRL-MULTI": "Skipped: Krux does not sign for inputs belonging to another party, so the multi-party cases (S5a, S5b, S8) cannot be run.",
-    "CTRL-SEND": "Krux exports a trimmed PSBT without the input derivations. The adapter combines it with the PSBT that was sent, as a coordinator would, before judging. Judged on its own the trimmed PSBT fails the BIP 375 reference validator because the input public keys are gone."
+    "CTRL-SEND": "Krux exports a trimmed PSBT without the input derivations. The adapter combines it with the PSBT that was sent, as a coordinator would, before judging. Judged on its own the trimmed PSBT fails the BIP 375 reference validator because the input public keys are gone.",
+    "S9c2": "Krux refuses, which is the required outcome, but with 'Unable to get policy': it could not classify the input, not because it recognised a segwit v2 output. The pass shows it does not sign this transaction; it does not show Krux checks for segwit v2 specifically.",
+    "S9c1": "Skipped: Krux accepts one script type per transaction, so it refuses a P2WPKH input next to a taproot one.",
+    "S9d": "Skipped for the same reason as S9c1: the case needs a P2WPKH and a taproot input in one transaction.",
+    "D1": "Krux shows the full tsp1 address, in groups, on the spend screen.",
+    "D3": "Krux shows the full labeled tsp1 address."
   }
 }
