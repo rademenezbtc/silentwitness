@@ -144,3 +144,4 @@ def test_s7_uses_the_largest_label():
     assert int.from_bytes(label, "little") == 0xFFFFFFFF
     spend = pr.get(s7.outputs[1], pr.PSBT_OUT_SP_V0_INFO)[33:]
     assert spend == USER.labeled_spend(0xFFFFFFFF)
+    assert not _by_id()["S7"].expected_change  # label != 0 is a self-transfer, not change

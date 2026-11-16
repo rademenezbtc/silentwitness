@@ -27,11 +27,12 @@ import tempfile
 import time
 from pathlib import Path
 
-from ..model import Case, Outcome, Result
+from .. import psbt_raw as pr
+from ..model import Case, Expect, Outcome, Result
 from .base import Adapter, AdapterUnavailable
 
 WORKER = Path(__file__).with_name("_krux_worker.py")
-TIMEOUT_S = 120.0  # the K_max cases take a while in pure Python
+TIMEOUT_S = 480.0  # the K_max cases take a while in pure Python
 
 
 class KruxHeadless(Adapter):
@@ -140,7 +141,7 @@ class KruxHeadless(Adapter):
                 duration_s=took,
             )
         reason = resp.get("reason", "")
-        if resp["outcome"] == "refused":
+        if resp["outcome"] == "refused" and case.expect is Expect.SIGN:
             # Missing features, not verdicts: do not score Krux on a valid control it cannot run.
             if "mixed inputs in the tx" in reason:
                 return Result(
@@ -157,11 +158,22 @@ class KruxHeadless(Adapter):
                     duration_s=took,
                 )
         change = resp.get("change")
+        returned = resp.get("psbt")
+        if returned:
+            # Krux hands back a trimmed PSBT (no input derivations, no UTXOs it did not
+            # need). A coordinator combines it with the PSBT it sent, so judge that.
+            try:
+                returned = pr.combine(pr.parse(case.psbt), pr.parse(returned)).to_base64()
+                reason = (reason + " " if reason else "") + (
+                    "[returned PSBT combined with the sent one: Krux exports a trimmed PSBT]"
+                )
+            except pr.PSBTParseError as e:
+                reason = f"{reason} [could not combine with the sent PSBT: {e}]".strip()
         return Result(
             case.id,
             Outcome(resp["outcome"]),
-            returned_psbt=resp.get("psbt"),
-            reason=resp.get("reason", ""),
+            returned_psbt=returned,
+            reason=reason,
             shown=resp.get("shown", []),
             change={int(k): v for k, v in change.items()} if change else None,
             duration_s=took,

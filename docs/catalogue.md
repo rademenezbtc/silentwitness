@@ -44,7 +44,7 @@ if its control passes too.
 | S5a, S5b | Another signer's ECDH share with a corrupted DLEQ proof, or a swapped share | Refuse | built (needs a multi-party signer) |
 | S6a | One more than K_max (2,324) outputs to one scan key | Refuse cleanly, never crash (control: exactly 2,323 signs) | done |
 | S6b | Host pre-fills `PSBT_OUT_SCRIPT` with the `k` values of two same-scan outputs swapped | Refuse | done |
-| S7 | Own change with the largest label, m = 0xFFFFFFFF | Sign; labeled key derived correctly (change detection needs a device) | done |
+| S7 | Own output with the largest label, m = 0xFFFFFFFF | Sign; labeled key derived correctly. Only m = 0 is change (BIP 352), so this is a self-transfer | done |
 | S8 | Global ECDH share, valid proof, that covers only the other party's input | Refuse | built (needs a multi-party signer) |
 | S9a, S9b | `SIGHASH_NONE` and `SIGHASH_ALL\|ANYONECANPAY` on an input | Refuse | done |
 | S9c | Segwit v2+ input, NUMS taproot input | Refuse | planned |

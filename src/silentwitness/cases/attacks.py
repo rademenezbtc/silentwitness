@@ -319,20 +319,21 @@ def _send_cases() -> list[Case]:
 
     # S7: label at the 32-bit edge. m = 0xFFFFFFFF is a valid label; a signer that
     # mishandles the integer (sign extension, 31-bit ints) derives the wrong key.
+    # Only m = 0 is change (BIP 352); an own output with another label is a
+    # self-transfer, so no change flag is asserted here.
     edge = _send("edge", sp_change=False)
     edge.outputs.pop()
     edge.pay_sp_change(69_000, label=0xFFFFFFFF)
     cases.append(
         _case(
             "S7",
-            "own change with the largest label (m = 0xFFFFFFFF), labeled key derived correctly",
+            "own output with the largest label (m = 0xFFFFFFFF), labeled key derived correctly",
             edge,
             edge.psbt(),
             Expect.SIGN,
             rule="BIP 352/375: label is an unsigned 32-bit integer",
             signed_inputs=(0, 1),
             expected_scripts=edge.expected_scripts(),
-            expected_change={0: False, 1: True},
         )
     )
 
