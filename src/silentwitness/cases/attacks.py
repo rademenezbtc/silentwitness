@@ -227,6 +227,89 @@ def _send_cases() -> list[Case]:
         )
     )
 
+    # S6: k ordering. Two codes share a scan key; BIP 375 assigns k by sorting the
+    # codes lexicographically by spend key. The host pre-fills PSBT_OUT_SCRIPT with
+    # the k values swapped, so the signer must notice the scripts are wrong.
+    order = Scenario("order")
+    order.add_p2wpkh(IN_P2WPKH, 100_000)
+    order.add_p2tr(IN_P2TR, 50_000)
+    spends = sorted([RECIPIENT.spend, RECIPIENT.labeled_spend(1)])
+    order.pay_sp(RECIPIENT.scan, spends[0], 70_000)
+    order.pay_sp(RECIPIENT.scan, spends[1], 70_000)
+    order.pay_p2wpkh_change(CHANGE_P2WPKH, 9_000)
+    cases.append(
+        _case(
+            "CTRL-ORDER",
+            "valid: two sp1 outputs with one scan key, k assigned by sorted spend key",
+            order,
+            order.psbt(),
+            Expect.SIGN,
+            rule="BIP 375 Signer: k follows the lexicographic order of the spend keys",
+            signed_inputs=(0, 1),
+            expected_scripts=order.expected_scripts(),
+        )
+    )
+    right = order.expected_scripts()
+    s6b = order.psbt()
+    pr.put(s6b.outputs[0], pr.PSBT_OUT_SCRIPT, bytes.fromhex(right[1]))
+    pr.put(s6b.outputs[1], pr.PSBT_OUT_SCRIPT, bytes.fromhex(right[0]))
+    cases.append(
+        _case(
+            "S6b",
+            "host pre-fills PSBT_OUT_SCRIPT with the k values of two same-scan outputs swapped",
+            order,
+            s6b,
+            Expect.REFUSE,
+            rule="BIP 375 Signer: scripts must match the derivation order",
+            control="CTRL-ORDER",
+        )
+    )
+
+    # S6a: K_max. BIP 352: more than 2323 codes sharing a scan key must fail.
+    # The same code repeated needs no key generation, so the case is cheap to build.
+    kmax = 2323
+    for cid, n, expect, title in (
+        ("CTRL-KMAX", kmax, Expect.SIGN, f"valid: exactly K_max ({kmax}) outputs to one scan key"),
+        ("S6a", kmax + 1, Expect.REFUSE, f"{kmax + 1} outputs to one scan key (K_max + 1)"),
+    ):
+        big = Scenario("kmax")
+        big.add_p2wpkh(IN_P2WPKH, 100_000)
+        big.add_p2tr(IN_P2TR, 50_000)
+        for _ in range(n):
+            big.pay_sp(RECIPIENT.scan, RECIPIENT.spend, 60)
+        extra = {} if expect is Expect.REFUSE else {"signed_inputs": (0, 1)}
+        cases.append(
+            _case(
+                cid,
+                title,
+                big,
+                big.psbt(),
+                expect,
+                rule="BIP 352: fail if a group sharing a scan key exceeds K_max (2323)",
+                control=None if expect is Expect.SIGN else "CTRL-KMAX",
+                **extra,
+            )
+        )
+
+    # S7: label at the 32-bit edge. m = 0xFFFFFFFF is a valid label; a signer that
+    # mishandles the integer (sign extension, 31-bit ints) derives the wrong key.
+    edge = _send("edge", sp_change=False)
+    edge.outputs.pop()
+    edge.pay_sp_change(69_000, label=0xFFFFFFFF)
+    cases.append(
+        _case(
+            "S7",
+            "own change with the largest label (m = 0xFFFFFFFF), labeled key derived correctly",
+            edge,
+            edge.psbt(),
+            Expect.SIGN,
+            rule="BIP 352/375: label is an unsigned 32-bit integer",
+            signed_inputs=(0, 1),
+            expected_scripts=edge.expected_scripts(),
+            expected_change={0: False, 1: True},
+        )
+    )
+
     # Control for S1/S2: SP change with label 0 and BIP 375 change derivations.
     change = _send("change", sp_change=True)
     cases.append(

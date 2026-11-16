@@ -210,15 +210,19 @@ class Scenario:
         return ((self.user.scan, w.origin(SCAN_PATH)), (self.user.spend, w.origin(SPEND_PATH)))
 
     def pay_sp_change(
-        self, amount: int, scan: bytes | None = None, spend: bytes | None = None
+        self,
+        amount: int,
+        scan: bytes | None = None,
+        spend: bytes | None = None,
+        label: int = 0,
     ) -> int:
-        """SP change with label 0. scan/spend override the honest keys (for attacks);
-        the derivations always claim the user's own paths."""
+        """SP change with `label` (0 by default). scan/spend override the honest keys
+        (for attacks); the derivations always claim the user's own paths."""
         return self.pay_sp(
             scan or self.user.scan,
-            spend or self.user.labeled_spend(0),
+            spend or self.user.labeled_spend(label),
             amount,
-            label=0,
+            label=label,
             origins=self.change_origins(),
         )
 
