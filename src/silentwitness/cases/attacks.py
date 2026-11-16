@@ -438,6 +438,7 @@ def _send_cases() -> list[Case]:
             rule="BIP 352: only eligible inputs feed the shared secret; outpoint_L spans all",
             signed_inputs=(0,),
             expected_scripts=inel.expected_scripts(),
+            meta={"multi_party": True},  # the NUMS input is another party's
         )
     )
 
@@ -522,6 +523,7 @@ def _send_cases() -> list[Case]:
             rule="BIP 352: only eligible inputs feed the shared secret; outpoint_L spans all",
             signed_inputs=(0,),
             expected_scripts=inel_tr.expected_scripts(),
+            meta={"multi_party": True},  # the NUMS input is another party's
         )
     )
 
