@@ -92,7 +92,7 @@ Checked 16 Nov 2026.
 | embit (library behind SeedSigner, Krux, Specter DIY) | send + spend in [PR #145](https://github.com/diybitcoinhardware/embit/pull/145), unmerged | `embit` (direct Python) | **working** |
 | SeedSigner | address display ([PR #769](https://github.com/SeedSigner/seedsigner/pull/769)); sending requested in [#633](https://github.com/SeedSigner/seedsigner/issues/633) | QR rig | planned |
 | [Kern](https://github.com/odudex/Kern) (ESP32-P4) | none yet | simulator, QR rig | planned (PSBT handling first) |
-| Krux | branch `feat/silent-payments`, unreleased | `krux` (headless firmware signer in a worker process; needs `SW_KRUX_DIR`) | adapter written, **not yet run against Krux** |
+| Krux | branch `feat/silent-payments`, unreleased | `krux` (headless firmware signer in a worker process; needs `SW_KRUX_DIR`) | **working** (CI, headless firmware code) |
 | Coldcard | draft [PR #587](https://github.com/Coldcard/firmware/pull/587) | simulator / SD | planned |
 | BitBox02 | send, released (9.26.5+) | USB | planned |
 
