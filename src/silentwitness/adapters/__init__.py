@@ -14,8 +14,15 @@ def _embit() -> Adapter:
     return EmbitDirect()
 
 
+def _krux() -> Adapter:
+    from .krux_headless import KruxHeadless
+
+    return KruxHeadless()
+
+
 ADAPTERS: dict[str, Callable[[], Adapter]] = {
     "embit": _embit,
+    "krux": _krux,
 }
 
 

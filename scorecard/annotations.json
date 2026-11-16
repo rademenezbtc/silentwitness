@@ -8,5 +8,16 @@
     "CTRL-CHANGE": "Signed correctly. embit's silent-payments code does not decide which outputs are the user's change, so change handling can only be judged on the devices built on it.",
     "S1": "Signed with correct outputs. Whether the host's output would be shown as change cannot be seen at library level: embit leaves change detection to the device.",
     "S2": "Signed with correct outputs. Whether the lock-and-ransom output would be shown as change cannot be seen at library level: embit leaves change detection to the device."
+  },
+  "krux": {
+    "CTRL-ORDERDESC": "Krux gives the k values to same-scan outputs in output order. BIP 375 says to sort the codes by spend key first, so when the outputs are listed in descending spend-key order Krux's scripts are swapped and the BIP 375 reference validator rejects the PSBT it returns. A BIP 352 recipient still finds the funds, because it tries every k, so this is an interoperability and conformance issue, not a loss of funds. It matters when another signer or validator checks Krux's output scripts.",
+    "P1": "Krux does not refuse. It leaves the input with the wrong tweak unsigned, signs the other input and returns the PSBT with no error and nothing on its screens. No invalid signature is produced and the transaction cannot be finalized, but BIP 376 says the signer MUST fail. embit refuses outright.",
+    "P2": "Same as P1: the input carrying another output's tweak is left unsigned and the rest is signed, with no error shown.",
+    "S3a": "Krux does not check that the supplied previous transaction hashes to the input's txid. The forged data was not used, so the outputs and signatures were still correct.",
+    "S7": "Krux recognises an output labeled 0xFFFFFFFF as its own and derives the labeled key correctly. It lists it as a self-transfer, which is right: only label 0 is change.",
+    "CTRL-MIXED": "Skipped: Krux accepts one script type per transaction, so it refuses P2WPKH and P2TR inputs together. A missing feature, not a verdict.",
+    "P5": "Skipped for the same reason as CTRL-MIXED: this case mixes a silent-payment (P2TR) input with an ordinary P2WPKH input.",
+    "CTRL-MULTI": "Skipped: Krux does not sign for inputs belonging to another party, so the multi-party cases (S5a, S5b, S8) cannot be run.",
+    "CTRL-SEND": "Krux exports a trimmed PSBT without the input derivations. The adapter combines it with the PSBT that was sent, as a coordinator would, before judging. Judged on its own the trimmed PSBT fails the BIP 375 reference validator because the input public keys are gone."
   }
 }

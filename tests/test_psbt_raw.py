@@ -34,3 +34,18 @@ def test_rejects_trailing_bytes():
     padded = base64.b64encode(base64.b64decode(case.psbt) + b"\x00\x00").decode()
     with pytest.raises(PSBTParseError):
         parse(padded)
+
+
+def test_combine_keeps_base_fields_and_lets_extra_win():
+    from silentwitness import psbt_raw as pr
+    from silentwitness.cases import get_suite
+
+    base = pr.parse(next(c for c in get_suite("attacks") if c.id == "CTRL-SEND").psbt)
+    extra = base.copy()
+    extra.inputs = [[e for e in m if e[0] == pr.PSBT_IN_PREVIOUS_TXID] for m in extra.inputs]
+    for m in extra.inputs:
+        pr.put(m, pr.PSBT_IN_SIGHASH_TYPE, (1).to_bytes(4, "little"))
+    merged = pr.combine(base, extra)
+    for b, m in zip(base.inputs, merged.inputs, strict=True):
+        assert all(e in m for e in b)  # nothing from base is lost
+        assert pr.get(m, pr.PSBT_IN_SIGHASH_TYPE) == (1).to_bytes(4, "little")

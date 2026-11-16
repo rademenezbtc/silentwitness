@@ -194,3 +194,25 @@ def parse(psbt_b64: str) -> RawPSBT:
     if pos != len(buf):
         raise PSBTParseError(f"{len(buf) - pos} trailing bytes")
     return RawPSBT(globals_, inputs, outputs)
+
+
+def combine(base: RawPSBT, extra: RawPSBT) -> RawPSBT:
+    """BIP 174 Combiner for two PSBTv2 with the same inputs and outputs: every field of
+    `base`, plus every field of `extra`, where `extra` wins on a conflicting key.
+
+    What a coordinator does with the PSBT it sent and the one a signer hands back,
+    for signers that return only what they changed."""
+    if len(base.inputs) != len(extra.inputs) or len(base.outputs) != len(extra.outputs):
+        raise PSBTParseError("PSBTs have a different number of inputs or outputs")
+
+    def merge(a: list[Entry], b: list[Entry]) -> list[Entry]:
+        merged = list(a)
+        for t, k, v in b:
+            put(merged, t, v, key_data=k)
+        return merged
+
+    return RawPSBT(
+        merge(base.globals, extra.globals),
+        [merge(a, b) for a, b in zip(base.inputs, extra.inputs, strict=True)],
+        [merge(a, b) for a, b in zip(base.outputs, extra.outputs, strict=True)],
+    )

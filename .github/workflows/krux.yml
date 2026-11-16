@@ -1,0 +1,49 @@
+name: krux
+
+# Runs the suite against Krux's firmware signer, headless, on a throwaway runner.
+# Krux is third-party code, so this job has no secrets and read-only permissions,
+# and runs only on pushes to this repo, manual dispatch and PRs that touch the adapter.
+# The Krux commit is pinned; bump KRUX_COMMIT to test a newer one.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "src/silentwitness/adapters/**"
+      - ".github/workflows/krux.yml"
+
+permissions:
+  contents: read
+
+env:
+  KRUX_COMMIT: 0bec5475c9b7a71ac26d33039e4a7af49df77131
+
+jobs:
+  krux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - name: Fetch Krux at the pinned commit
+        run: |
+          git clone https://github.com/selfcustody/krux.git "$RUNNER_TEMP/krux"
+          git -C "$RUNNER_TEMP/krux" checkout "$KRUX_COMMIT"
+          git -C "$RUNNER_TEMP/krux" submodule update --init --depth 1 \
+            vendor/embit vendor/urtypes vendor/foundation-ur-py
+      - name: Run all suites against Krux
+        env:
+          SW_KRUX_DIR: ${{ runner.temp }}/krux
+        run: silentwitness run --adapter krux --suite all --out evidence/krux --note "CI ${{ github.sha }}" 2>&1 | tee krux-run.txt || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: krux-evidence
+          path: |
+            evidence/krux
+            krux-run.txt
+          retention-days: 30
