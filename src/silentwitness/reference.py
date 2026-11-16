@@ -50,3 +50,17 @@ def validate(psbt_b64: str, checks: tuple[str, ...] = CHECKS) -> tuple[bool, str
     except Exception as e:  # malformed PSBT: the reference code raises
         return False, f"reference validator raised {type(e).__name__}: {e}"
     return True, "all BIP 375 checks passed"
+
+
+def dleq_share(a: int, scan33: bytes, aux: bytes) -> tuple[bytes, bytes]:
+    """ECDH share a*B_scan and its BIP 374 DLEQ proof, from the vendored reference code.
+
+    Used only to build test PSBTs for a second signer's input; never by a signer."""
+    _checks()  # puts the vendored packages on sys.path
+    from dleq import dleq_generate_proof
+    from secp256k1lab.secp256k1 import GE
+
+    b = GE.from_bytes_compressed(scan33)
+    proof = dleq_generate_proof(a, b, aux)
+    assert proof is not None
+    return (a * b).to_bytes_compressed(), proof

@@ -150,6 +150,83 @@ def _send_cases() -> list[Case]:
             )
         )
 
+    # -- two signers: the user holds input 0, another party holds input 1 -----
+    multi = Scenario("multi")
+    multi.add_p2wpkh(IN_P2WPKH, 100_000)
+    foreign = multi.add_p2wpkh(IN_P2WPKH, 60_000, owner=HOST)
+    multi.pay_sp(RECIPIENT.scan, RECIPIENT.spend, 120_000)
+    multi.pay_p2wpkh_change(CHANGE_P2WPKH, 39_000)
+    multi.add_share(foreign, RECIPIENT.scan)
+    mbase = multi.psbt()
+    cases.append(
+        _case(
+            "CTRL-MULTI",
+            "valid: two signers; the other party's input carries a correct ECDH share and proof",
+            multi,
+            mbase,
+            Expect.SIGN,
+            rule="BIP 375 Signer: verifies other signers' DLEQ proofs, adds its own share",
+            signed_inputs=(0,),
+            expected_scripts=multi.expected_scripts(),
+        )
+    )
+
+    # S5a: the other party's DLEQ proof is corrupted. A signer that does not
+    # verify it builds outputs from a share it cannot trust.
+    s5a = mbase.copy()
+    proof = bytearray(pr.get(s5a.inputs[foreign], pr.PSBT_IN_SP_DLEQ, RECIPIENT.scan))
+    proof[40] ^= 0x01
+    pr.put(s5a.inputs[foreign], pr.PSBT_IN_SP_DLEQ, bytes(proof), key_data=RECIPIENT.scan)
+    cases.append(
+        _case(
+            "S5a",
+            "another signer's ECDH share carries a corrupted DLEQ proof",
+            multi,
+            s5a,
+            Expect.REFUSE,
+            rule="BIP 375 Signer: MUST verify DLEQ proofs of shares it did not compute",
+            control="CTRL-MULTI",
+        )
+    )
+
+    # S5b: the share is swapped for a different point while the proof is kept.
+    s5b = mbase.copy()
+    wrong, _ = multi.share_for(0, RECIPIENT.scan)  # the user's own share, not input 1's
+    pr.put(s5b.inputs[foreign], pr.PSBT_IN_SP_ECDH_SHARE, wrong, key_data=RECIPIENT.scan)
+    cases.append(
+        _case(
+            "S5b",
+            "another signer's ECDH share is swapped for a different point, proof kept",
+            multi,
+            s5b,
+            Expect.REFUSE,
+            rule="BIP 375 Signer: MUST verify DLEQ proofs of shares it did not compute",
+            control="CTRL-MULTI",
+        )
+    )
+
+    # S8: a global ECDH share that covers only the other party's input. The
+    # proof is valid for that input alone, but the global share must cover every
+    # eligible input, so a signer that accepts it skips its own share and builds
+    # outputs from a partial sum that the recipient can never find.
+    s8 = mbase.copy()
+    share, proof = multi.share_for(foreign, RECIPIENT.scan)
+    pr.remove(s8.inputs[foreign], pr.PSBT_IN_SP_ECDH_SHARE)
+    pr.remove(s8.inputs[foreign], pr.PSBT_IN_SP_DLEQ)
+    pr.put(s8.globals, pr.PSBT_GLOBAL_SP_ECDH_SHARE, share, key_data=RECIPIENT.scan)
+    pr.put(s8.globals, pr.PSBT_GLOBAL_SP_DLEQ, proof, key_data=RECIPIENT.scan)
+    cases.append(
+        _case(
+            "S8",
+            "global ECDH share (valid proof) that covers only the other party's input",
+            multi,
+            s8,
+            Expect.REFUSE,
+            rule="BIP 375: a global share must cover all eligible inputs",
+            control="CTRL-MULTI",
+        )
+    )
+
     # Control for S1/S2: SP change with label 0 and BIP 375 change derivations.
     change = _send("change", sp_change=True)
     cases.append(

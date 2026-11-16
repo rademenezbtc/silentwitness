@@ -97,8 +97,11 @@ class Scenario:
         pr.put(entries, pr.PSBT_IN_SEQUENCE, SEQUENCE.to_bytes(4, "little"))
         return tx.txid() + vout.to_bytes(4, "little")
 
-    def add_p2wpkh(self, path: str, amount: int, non_witness: bool = True) -> int:
-        w = self.user.wallet
+    def add_p2wpkh(
+        self, path: str, amount: int, non_witness: bool = True, owner: Party | None = None
+    ) -> int:
+        """P2WPKH input. `owner` is another party's input (a second signer)."""
+        w = (owner or self.user).wallet
         priv = w.priv(path)
         pub = ser_p(point(priv))
         spk = p2wpkh_script(pub)
@@ -111,6 +114,19 @@ class Scenario:
         op = self._outpoint(e, tx)
         self.inputs.append(_Input(e, priv, op))
         return len(self.inputs) - 1
+
+    def share_for(self, idx: int, scan: bytes) -> tuple[bytes, bytes]:
+        """ECDH share and DLEQ proof of input `idx` for `scan`, as its owner would add them."""
+        from ..reference import dleq_share
+
+        i = self.inputs[idx]
+        aux = sha256(f"silentwitness/dleq/{self.tag}/{idx}".encode())
+        return dleq_share(i.a, scan, aux)
+
+    def add_share(self, idx: int, scan: bytes) -> None:
+        share, proof = self.share_for(idx, scan)
+        pr.put(self.inputs[idx].entries, pr.PSBT_IN_SP_ECDH_SHARE, share, key_data=scan)
+        pr.put(self.inputs[idx].entries, pr.PSBT_IN_SP_DLEQ, proof, key_data=scan)
 
     def add_p2tr(self, path: str, amount: int) -> int:
         w = self.user.wallet
