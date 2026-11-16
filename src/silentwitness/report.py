@@ -277,13 +277,20 @@ CSS = """
   --cell-ink:#ffffff;
 }
 @media (prefers-color-scheme: dark){
-  :root{
+  :root:not([data-theme="light"]){
     --paper:#141a21; --sheet:#1b232c; --ink:#e4e9ef; --soft:#9aa7b6; --rule:#2e3a47;
     --pass:#4cc296; --fail:#ff7a70; --skip:#e0b453; --unearned:#b59cf0; --link:#8fb6f2;
     --pass-bg:#173329; --fail-bg:#3a1d1b; --skip-bg:#352b16; --unearned-bg:#2a2140;
-    --cell-ink:#10161c;
+    --cell-ink:#10161c; color-scheme:dark;
   }
 }
+:root[data-theme="dark"]{
+  --paper:#141a21; --sheet:#1b232c; --ink:#e4e9ef; --soft:#9aa7b6; --rule:#2e3a47;
+  --pass:#4cc296; --fail:#ff7a70; --skip:#e0b453; --unearned:#b59cf0; --link:#8fb6f2;
+  --pass-bg:#173329; --fail-bg:#3a1d1b; --skip-bg:#352b16; --unearned-bg:#2a2140;
+  --cell-ink:#10161c; color-scheme:dark;
+}
+:root[data-theme="light"]{color-scheme:light}
 *{box-sizing:border-box}
 html{background:var(--paper);color:var(--ink);
   font:16px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
@@ -295,6 +302,16 @@ code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-s
 header.top{display:flex;justify-content:space-between;align-items:baseline;padding:22px 0 0}
 .brand{font-weight:700;letter-spacing:-.01em;font-size:1.05rem}
 .top nav a{margin-left:18px;font-size:.95rem}
+.top nav{display:flex;align-items:baseline;flex-wrap:wrap;justify-content:flex-end}
+.theme{display:none;font:inherit;font-size:.9rem;align-items:center;gap:8px;margin-left:18px;
+  border:1px solid var(--rule);background:var(--sheet);color:var(--ink);border-radius:999px;
+  padding:3px 12px 3px 8px;cursor:pointer;align-self:center}
+.js .theme{display:inline-flex}
+.theme:hover{border-color:var(--link)}
+.theme svg{width:16px;height:16px;flex:none}
+.theme .i-moon{display:none}
+.theme[data-mode="light"] .i-sun{display:none}
+.theme[data-mode="light"] .i-moon{display:block}
 .hero{padding:56px 0 8px}
 .hero h1{font-size:clamp(2rem,4.4vw,3.3rem);line-height:1.08;letter-spacing:-.025em;
   font-weight:750;margin:0;max-width:21ch}
@@ -400,7 +417,9 @@ footer{color:var(--soft);font-size:.9rem;padding:28px 0 60px;border-top:1px soli
 footer p{max-width:72ch}
 @media (max-width:760px){
   header.top{flex-direction:column;gap:6px}
+  .top nav{justify-content:flex-start}
   .top nav a{margin:0 16px 0 0}
+  .theme{margin-left:0}
   .sg{grid-template-columns:1fr;gap:6px}
   .cell{width:24px;height:30px}
   .ov{grid-template-columns:1fr auto;row-gap:6px}
@@ -417,6 +436,26 @@ footer p{max-width:72ch}
 }
 """
 
+HEAD_JS = """
+document.documentElement.classList.add('js');
+try{var t=localStorage.getItem('sw-theme');
+if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}
+"""
+
+# Shows the mode you would switch TO: sun while dark, moon while light.
+THEME_BUTTON = (
+    '<button type="button" class="theme" id="theme-toggle" data-mode="light" '
+    'aria-label="Switch to dark mode">'
+    '<svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/>'
+    '<path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4'
+    'M17.7 6.3l1.4-1.4"/></svg>'
+    '<svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>'
+    '<span class="theme-label">Dark</span></button>'
+)
+
 JS = """
 document.querySelectorAll('.filters button').forEach(b=>b.addEventListener('click',()=>{
   const f=b.dataset.filter;
@@ -424,6 +463,28 @@ document.querySelectorAll('.filters button').forEach(b=>b.addEventListener('clic
   if(f!=='all')document.body.classList.add('f-'+f);
   b.parentElement.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));
 }));
+(function(){
+  const btn=document.getElementById('theme-toggle');
+  if(!btn)return;
+  const mq=window.matchMedia('(prefers-color-scheme: dark)');
+  const current=()=>document.documentElement.dataset.theme||(mq.matches?'dark':'light');
+  function paint(){
+    const dark=current()==='dark';
+    // The button names the mode it switches to.
+    btn.dataset.mode=dark?'dark':'light';
+    btn.setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');
+    btn.querySelector('.theme-label').textContent=dark?'Light':'Dark';
+  }
+  btn.addEventListener('click',()=>{
+    const next=current()==='dark'?'light':'dark';
+    document.documentElement.dataset.theme=next;
+    try{localStorage.setItem('sw-theme',next);}catch(e){}
+    paint();
+  });
+  const follow=()=>{if(!document.documentElement.dataset.theme)paint();};
+  if(mq.addEventListener)mq.addEventListener('change',follow);
+  paint();
+})();
 function openHash(){
   const el=location.hash&&document.getElementById(decodeURIComponent(location.hash.slice(1)));
   if(el&&el.closest('details')){document.body.classList.remove('f-fail','f-skip','f-pass');
@@ -457,13 +518,15 @@ def render(runs: list[dict], annotations: dict, repo: str) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SilentWitness scorecard</title>
 <meta name="description" content="How Bitcoin hardware signers handle hostile silent-payment PSBTs, with evidence.">
+<meta name="color-scheme" content="light dark">
+<script>{HEAD_JS}</script>
 <style>{CSS}</style>
 </head>
 <body>
 <div class="wrap">
 <header class="top">
   <span class="brand">SilentWitness</span>
-  <nav><a href="{escape(repo)}">Source</a><a href="{escape(repo)}/blob/main/docs/catalogue.md">Case catalogue</a><a href="{escape(repo)}/blob/main/docs/disclosure-policy.md">Disclosure policy</a></nav>
+  <nav><a href="{escape(repo)}">Source</a><a href="{escape(repo)}/blob/main/docs/catalogue.md">Case catalogue</a><a href="{escape(repo)}/blob/main/docs/disclosure-policy.md">Disclosure policy</a>{THEME_BUTTON}</nav>
 </header>
 <section class="hero">
   <h1>What Bitcoin signers do with hostile silent-payment PSBTs</h1>
