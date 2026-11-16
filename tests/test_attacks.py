@@ -17,7 +17,7 @@ def test_suite_is_deterministic():
 def test_every_attack_has_a_valid_control():
     cases = _by_id()
     for c in cases.values():
-        if not c.id.startswith("CTRL"):
+        if c.expect is Expect.REFUSE or c.control:
             assert c.control in cases, c.id
             assert cases[c.control].expect is Expect.SIGN
 
@@ -67,3 +67,23 @@ def test_s4_and_s9_change_only_the_targeted_field():
         assert s9.outputs == ctrl.outputs
         assert s9.inputs[1] == ctrl.inputs[1]
         assert int.from_bytes(pr.get(s9.inputs[0], pr.PSBT_IN_SIGHASH_TYPE), "little") == expected
+
+
+def test_p3_p4_p5_shape():
+    cases = _by_id()
+    ctrl = pr.parse(cases["CTRL-SPEND"].psbt)
+    p3a = pr.parse(cases["P3a"].psbt)
+    p3b = pr.parse(cases["P3b"].psbt)
+    assert pr.get_all(p3a.inputs[0], pr.PSBT_IN_SP_SPEND_BIP32_DERIVATION) == []
+    assert p3a.inputs[1] == ctrl.inputs[1] and p3b.inputs[1] == ctrl.inputs[1]
+    assert pr.get(p3b.inputs[0], pr.PSBT_IN_SP_TWEAK) == pr.get(ctrl.inputs[0], pr.PSBT_IN_SP_TWEAK)
+    assert cases["P3a"].refusal_ok and cases["P3b"].refusal_ok
+
+    p4 = pr.parse(cases["P4"].psbt)
+    spk = pr.get(p4.inputs[0], pr.PSBT_IN_WITNESS_UTXO)[9:]
+    tweak = int32(pr.get(p4.inputs[0], pr.PSBT_IN_SP_TWEAK))
+    assert not (GE.from_bytes_compressed(USER.spend) + point(tweak)).has_even_y()
+    assert xonly(GE.from_bytes_compressed(USER.spend) + point(tweak)) == spk[2:]
+
+    assert len(pr.parse(cases["P5"].psbt).inputs) == 2
+    assert cases["P5"].expected_scripts
