@@ -1,0 +1,55 @@
+name: scorecard
+
+# Runs every suite against every adapter that works in CI, builds the scorecard
+# page and publishes it to GitHub Pages. Only unreleased signer code runs here;
+# released-firmware cases stay private until the disclosure policy allows.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scorecard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e '.[embit]'
+      - name: Run all suites against embit
+        # Exits non-zero when a signer fails a case; the scorecard shows it.
+        run: silentwitness run --adapter embit --suite all --out evidence/ci --note "CI ${{ github.sha }}" || true
+      - name: Build scorecard
+        run: silentwitness report --evidence evidence/ci --out site
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evidence
+          path: evidence/ci
+          retention-days: 90
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

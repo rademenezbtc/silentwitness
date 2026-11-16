@@ -69,6 +69,14 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 1 if failed else 0
 
 
+def _cmd_report(args: argparse.Namespace) -> int:
+    from .report import build
+
+    page = build(Path(args.evidence), Path(args.out), Path(args.annotations), args.repo)
+    print("scorecard:", page)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="silentwitness", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -84,6 +92,15 @@ def main(argv: list[str] | None = None) -> int:
     ls = sub.add_parser("list", help="list the cases in a suite")
     ls.add_argument("--suite", default="bip375", choices=sorted(SUITES))
     ls.set_defaults(func=_cmd_list)
+
+    rp = sub.add_parser("report", help="build the scorecard page from evidence runs")
+    rp.add_argument("--evidence", default="evidence", help="folder with run.json files")
+    rp.add_argument(
+        "--out", default="scorecard/site", help="output folder (default: scorecard/site)"
+    )
+    rp.add_argument("--annotations", default="scorecard/annotations.json")
+    rp.add_argument("--repo", default="https://github.com/rademenezbtc/silentwitness")
+    rp.set_defaults(func=_cmd_report)
 
     v = sub.add_parser("verify-vectors", help="check pinned vectors against MANIFEST.json")
     v.set_defaults(func=_cmd_verify)

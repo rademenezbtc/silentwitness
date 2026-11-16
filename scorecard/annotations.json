@@ -1,0 +1,12 @@
+{
+  "embit": {
+    "BIP375-I10": "embit holds the key for this input, so it drops the per-input ECDH share that has no DLEQ proof and writes a correct global share instead. The PSBT it returns is valid. BIP 375 only requires verifying proofs for inputs the signer has no key for, so whether this counts as a failure is an open question for the maintainers.",
+    "BIP375-I12": "Same as I10 with an invalid DLEQ proof: embit replaces the bad per-input share with a correct global one and the returned PSBT is valid. Open question: refuse, or repair fields on inputs the signer controls?",
+    "BIP375-I14": "embit replaces the per-input share, but the input still has no BIP 32 derivation, so other parties cannot verify the returned PSBT.",
+    "S3a": "embit does not check that the supplied previous transaction hashes to the input's txid. The library has verify() for this, but sign_with() does not call it. Here the forged data was not used, so the outputs and signatures were still correct.",
+    "S3b": "embit trusted the false witness UTXO, left the input out of the BIP 352 input set and computed a silent-payment output the recipient can never find. In this case its signatures are also invalid against the real UTXOs, so the transaction could not be broadcast. The BIP 375 reference validator accepts the result too, which suggests a new invalid test vector.",
+    "CTRL-CHANGE": "Signed correctly. embit's silent-payments code does not decide which outputs are the user's change, so change handling can only be judged on the devices built on it.",
+    "S1": "Signed with correct outputs. Whether the host's output would be shown as change cannot be seen at library level: embit leaves change detection to the device.",
+    "S2": "Signed with correct outputs. Whether the lock-and-ransom output would be shown as change cannot be seen at library level: embit leaves change detection to the device."
+  }
+}

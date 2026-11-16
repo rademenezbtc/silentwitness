@@ -10,6 +10,9 @@ It feeds a signer crafted PSBTs as a **malicious host** would, records what the
 signer signs, refuses or shows on its screen, checks the result independently,
 and keeps the evidence.
 
+**Scorecard: [rademenezbtc.github.io/silentwitness](https://rademenezbtc.github.io/silentwitness/)**,
+rebuilt from a fresh run on every push to `main`.
+
 > **Status: pre-alpha (week 2).** The BIP 375 baseline and the first attack
 > cases (S1–S3, P1–P2) run against embit. Simulators and the real-device rig
 > are next. Test keys and signet/regtest only.
@@ -73,6 +76,13 @@ pytest
 
 `silentwitness run` exits non-zero if any case fails.
 
+Build the scorecard page from your runs:
+
+```bash
+silentwitness report            # writes scorecard/site/index.html
+open scorecard/site/index.html
+```
+
 ## Targets
 
 Checked 16 Nov 2026.
@@ -119,11 +129,12 @@ src/silentwitness/
   psbt_raw.py       dependency-free PSBTv2 reader and writer
   reference.py      wrapper around the vendored BIP 375 validator
   evidence.py       run records
+  report.py         scorecard page
   rig/              QR camera rig for real devices (planned)
 vectors/            upstream BIP vectors, pinned by commit and sha256
 third_party/        BIP 375 reference validator, Bitcoin Core RIPEMD-160, unchanged
 evidence/           run output (git-ignored, published selectively)
-scorecard/          public scorecard (planned)
+scorecard/          plain-language notes per result; site/ is the built page (git-ignored)
 docs/               threat model, disclosure policy, catalogue
 tools/              maintenance scripts
 ```
