@@ -155,8 +155,8 @@ def test_descending_order_control_lists_outputs_in_descending_spend_order():
 
 
 def test_k_follows_sorted_spend_keys_not_output_index():
-    from silentwitness.crypto import sp_output_keys
     from silentwitness.cases.builder import RECIPIENT
+    from silentwitness.crypto import sp_output_keys
 
     lo, hi = sorted([RECIPIENT.spend, RECIPIENT.labeled_spend(1)])
     outpoints = [bytes(36)]
