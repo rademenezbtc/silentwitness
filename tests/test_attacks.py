@@ -50,3 +50,20 @@ def test_change_attacks_change_only_the_change_code():
         assert pr.get_all(attack.outputs[1], pr.PSBT_OUT_BIP32_DERIVATION) == pr.get_all(
             ctrl.outputs[1], pr.PSBT_OUT_BIP32_DERIVATION
         )
+
+
+def test_s4_and_s9_change_only_the_targeted_field():
+    cases = _by_id()
+    ctrl = pr.parse(cases["CTRL-SEND"].psbt)
+
+    s4 = pr.parse(cases["S4"].psbt)
+    assert s4.inputs == ctrl.inputs
+    assert pr.get(ctrl.outputs[0], pr.PSBT_OUT_SCRIPT) is None
+    assert pr.get(s4.outputs[0], pr.PSBT_OUT_SCRIPT) is not None
+    assert s4.outputs[1:] == ctrl.outputs[1:]
+
+    for cid, expected in (("S9a", 0x02), ("S9b", 0x81)):
+        s9 = pr.parse(cases[cid].psbt)
+        assert s9.outputs == ctrl.outputs
+        assert s9.inputs[1] == ctrl.inputs[1]
+        assert int.from_bytes(pr.get(s9.inputs[0], pr.PSBT_IN_SIGHASH_TYPE), "little") == expected

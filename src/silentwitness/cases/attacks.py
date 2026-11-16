@@ -108,6 +108,48 @@ def _send_cases() -> list[Case]:
         )
     )
 
+    # S4: PSBT_OUT_SCRIPT is set on the silent-payment output and points at a
+    # script the host controls. A signer that trusts the field sends the money
+    # to the host's script instead of the derived silent-payment output.
+    s4 = base.copy()
+    pr.put(
+        s4.outputs[0],
+        pr.PSBT_OUT_SCRIPT,
+        p2wpkh_script(HOST.wallet.pub(IN_P2WPKH)),
+    )
+    cases.append(
+        _case(
+            "S4",
+            "host sets PSBT_OUT_SCRIPT on the sp1 output to a script it controls",
+            send,
+            s4,
+            Expect.REFUSE,
+            rule="BIP 375 Signer: PSBT_OUT_SCRIPT must match the derived silent-payment output",
+            control="CTRL-SEND",
+        )
+    )
+
+    # S9: BIP 375 requires SIGHASH_ALL when a transaction has silent-payment
+    # outputs, because other sighash types let the host change outputs after
+    # signing and invalidate the derivation.
+    for cid, sighash, label in (
+        ("S9a", 0x02, "SIGHASH_NONE"),
+        ("S9b", 0x81, "SIGHASH_ALL|ANYONECANPAY"),
+    ):
+        s9 = base.copy()
+        pr.put(s9.inputs[0], pr.PSBT_IN_SIGHASH_TYPE, sighash.to_bytes(4, "little"))
+        cases.append(
+            _case(
+                cid,
+                f"host sets input 0 to {label} on a transaction with an sp1 output",
+                send,
+                s9,
+                Expect.REFUSE,
+                rule="BIP 375 Signer: only SIGHASH_ALL is allowed with silent-payment outputs",
+                control="CTRL-SEND",
+            )
+        )
+
     # Control for S1/S2: SP change with label 0 and BIP 375 change derivations.
     change = _send("change", sp_change=True)
     cases.append(

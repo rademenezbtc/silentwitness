@@ -37,12 +37,13 @@ if its control passes too.
 | S2 | Change uses the user's spend key with the host's scan key (lock and ransom) | Refuse, or treat as a payment, not change | built |
 | S3a | Input's non-witness UTXO forged (does not hash to the previous txid) so the input looks ineligible | Refuse | done |
 | S3b | Input's witness UTXO claims P2WSH while its non-witness UTXO says P2WPKH, dropping it from the input hash | Refuse | done |
-| S4 | `PSBT_OUT_SCRIPT` set and not matching the SP address | Refuse | planned |
+| S4 | `PSBT_OUT_SCRIPT` set and not matching the SP address | Refuse | done |
 | S5 | Another signer's ECDH share with a wrong DLEQ proof | Refuse | planned |
 | S6 | Same scan key, many outputs: shuffled `k` ordering; counts near K_max (2,323) | Refuse wrong order; refuse cleanly at K_max, never crash | planned |
 | S7 | Labels at and above the 32-bit edge | Refuse invalid labels | planned |
 | S8 | Conflicting global and per-input ECDH shares | Refuse | planned |
-| S9 | Non-`SIGHASH_ALL`, segwit v2+ input, NUMS taproot input | Refuse | planned |
+| S9a, S9b | `SIGHASH_NONE` and `SIGHASH_ALL\|ANYONECANPAY` on an input | Refuse | done |
+| S9c | Segwit v2+ input, NUMS taproot input | Refuse | planned |
 
 Open question (S3c): the same witness-UTXO lie on an input the signer does not
 own, with no non-witness UTXO to check against. A signer cannot detect it from
