@@ -101,6 +101,13 @@ class EmbitDirect(Adapter):
         except _MissingKey as e:
             return Result(case.id, Outcome.SKIPPED, reason=str(e))
         except self._refusals as e:
+            if "multi-party Silent Payment sends are not supported" in str(e):
+                # A missing feature, not a refusal: embit cannot take part in this case at all.
+                return Result(
+                    case.id,
+                    Outcome.SKIPPED,
+                    reason=f"embit does not support multi-party silent-payment sends ({e})",
+                )
             return Result(
                 case.id,
                 Outcome.REFUSED,

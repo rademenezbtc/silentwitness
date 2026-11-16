@@ -87,3 +87,32 @@ def test_p3_p4_p5_shape():
 
     assert len(pr.parse(cases["P5"].psbt).inputs) == 2
     assert cases["P5"].expected_scripts
+
+
+def test_multi_signer_cases_against_reference_validator():
+    from silentwitness import reference
+
+    cases = _by_id()
+    ok, msg = reference.validate(cases["CTRL-MULTI"].psbt)
+    assert ok, msg
+    # S8's global share cannot cover both inputs: the reference validator rejects it.
+    ok, msg = reference.validate(cases["S8"].psbt)
+    assert not ok and "Global DLEQ proof invalid" in msg
+
+
+def test_s5_changes_only_the_other_signers_share():
+    cases = _by_id()
+    ctrl = pr.parse(cases["CTRL-MULTI"].psbt)
+    for cid in ("S5a", "S5b"):
+        attack = pr.parse(cases[cid].psbt)
+        assert attack.inputs[0] == ctrl.inputs[0]
+        assert attack.outputs == ctrl.outputs
+        assert attack.inputs[1] != ctrl.inputs[1]
+    # S5a keeps the share and corrupts the proof; S5b keeps the proof and swaps the share.
+    a, b = pr.parse(cases["S5a"].psbt), pr.parse(cases["S5b"].psbt)
+    assert pr.get_all(a.inputs[1], pr.PSBT_IN_SP_ECDH_SHARE) == pr.get_all(
+        ctrl.inputs[1], pr.PSBT_IN_SP_ECDH_SHARE
+    )
+    assert pr.get_all(b.inputs[1], pr.PSBT_IN_SP_DLEQ) == pr.get_all(
+        ctrl.inputs[1], pr.PSBT_IN_SP_DLEQ
+    )

@@ -27,6 +27,7 @@ if its control passes too.
 |---|---|---|---|
 | CTRL-SEND | P2WPKH + P2TR inputs pay an `sp1` address, P2WPKH change | Sign; outputs match independent BIP 352 derivation; signatures verify | done |
 | CTRL-CHANGE | Same, with SP change (label 0) and BIP 375 change derivations | Sign; output 1 treated as change | built |
+| CTRL-MULTI | Two signers: the other party's input carries a correct share and proof | Sign input 0; outputs match independent derivation | built (needs a multi-party signer) |
 | CTRL-SPEND | Spend two received SP outputs (k=0, k=1) | Sign; BIP 340 signatures verify | done |
 
 ## Sending (BIP 375), malicious host
@@ -38,10 +39,10 @@ if its control passes too.
 | S3a | Input's non-witness UTXO forged (does not hash to the previous txid) so the input looks ineligible | Refuse | done |
 | S3b | Input's witness UTXO claims P2WSH while its non-witness UTXO says P2WPKH, dropping it from the input hash | Refuse | done |
 | S4 | `PSBT_OUT_SCRIPT` set and not matching the SP address | Refuse | done |
-| S5 | Another signer's ECDH share with a wrong DLEQ proof | Refuse | planned |
+| S5a, S5b | Another signer's ECDH share with a corrupted DLEQ proof, or a swapped share | Refuse | built (needs a multi-party signer) |
 | S6 | Same scan key, many outputs: shuffled `k` ordering; counts near K_max (2,323) | Refuse wrong order; refuse cleanly at K_max, never crash | planned |
 | S7 | Labels at and above the 32-bit edge | Refuse invalid labels | planned |
-| S8 | Conflicting global and per-input ECDH shares | Refuse | planned |
+| S8 | Global ECDH share, valid proof, that covers only the other party's input | Refuse | built (needs a multi-party signer) |
 | S9a, S9b | `SIGHASH_NONE` and `SIGHASH_ALL\|ANYONECANPAY` on an input | Refuse | done |
 | S9c | Segwit v2+ input, NUMS taproot input | Refuse | planned |
 
