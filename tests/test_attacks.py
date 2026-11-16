@@ -1,3 +1,5 @@
+import pytest
+
 from silentwitness import psbt_raw as pr
 from silentwitness._secp import GE
 from silentwitness.cases import get_suite
@@ -163,3 +165,67 @@ def test_k_follows_sorted_spend_keys_not_output_index():
     asc = sp_output_keys(7, outpoints, [(RECIPIENT.scan, lo), (RECIPIENT.scan, hi)])
     desc = sp_output_keys(7, outpoints, [(RECIPIENT.scan, hi), (RECIPIENT.scan, lo)])
     assert asc == [desc[1], desc[0]]  # each code keeps its k whatever its output position
+
+
+def test_sp_address_matches_embit_encoding():
+    pytest.importorskip("embit")
+    from embit import bech32, ec
+
+    from silentwitness import sp_address
+    from silentwitness.cases.builder import RECIPIENT
+
+    payload = RECIPIENT.scan + RECIPIENT.spend
+    data = bech32.convertbits(payload, 8, 5)
+    want = bech32.bech32_encode(bech32.Encoding.BECH32M, "tsp", [0] + data)
+    assert sp_address.encode(RECIPIENT.scan, RECIPIENT.spend) == want
+    assert want.startswith("tsp1q")
+    ec.PublicKey.parse(RECIPIENT.scan)  # the keys are real points
+
+
+def test_s9_cases_change_only_what_they_claim():
+    from silentwitness.cases.builder import NUMS_H
+
+    cases = _by_id()
+    s9c1 = pr.parse(cases["S9c1"].psbt)
+    assert pr.get(s9c1.inputs[1], pr.PSBT_IN_TAP_INTERNAL_KEY) == NUMS_H
+    spk2 = pr.get(pr.parse(cases["S9c2"].psbt).inputs[1], pr.PSBT_IN_WITNESS_UTXO)[9:]
+    assert spk2[:2] == b"\x52\x20" and len(spk2) == 34  # OP_2 <32 bytes>: a witness v2 program
+    # S9c1 expectation leaves the NUMS input out of the sum; S9d keeps the own input in.
+    assert cases["S9c1"].signed_inputs == (0,) and cases["S9d"].signed_inputs == (0, 1)
+    ctrl, s9d = pr.parse(cases["CTRL-MIXED"].psbt), pr.parse(cases["S9d"].psbt)
+    assert s9d.outputs == ctrl.outputs and s9d.inputs[0] == ctrl.inputs[0]
+    assert pr.get(s9d.inputs[1], pr.PSBT_IN_TAP_INTERNAL_KEY) == NUMS_H
+    assert pr.get(ctrl.inputs[1], pr.PSBT_IN_TAP_INTERNAL_KEY) != NUMS_H
+    assert cases["S9d"].expected_scripts == cases["CTRL-MIXED"].expected_scripts
+
+
+def test_ineligible_input_changes_the_expected_scripts_but_not_the_outpoint_set():
+    cases = _by_id()
+    # S9c1 and CTRL-SEND share outputs but not inputs, so their scripts must differ.
+    assert cases["S9c1"].expected_scripts != cases["CTRL-SEND"].expected_scripts
+
+
+def test_display_cases_expect_full_addresses():
+    cases = _by_id()
+    for cid in ("D1", "D2", "D3"):
+        c = cases[cid]
+        assert c.expect is Expect.DISPLAY and c.expected_display
+        assert all(a.startswith("tsp1q") for a in c.expected_display)
+    assert len(cases["D2"].expected_display) == 2
+    assert cases["D3"].expected_display != cases["D1"].expected_display  # the label changes it
+
+
+def test_display_judgement_skips_without_screens_and_ignores_spacing():
+    from silentwitness.judge import judge_case
+    from silentwitness.model import Outcome, Result, Verdict
+
+    c = _by_id()["D1"]
+    base = dict(outcome=Outcome.SIGNED, returned_psbt=c.psbt)
+    assert judge_case(c, Result(c.id, **base)).verdict is Verdict.SKIP
+    addr = c.expected_display[0]
+    spaced = " ".join(addr[i : i + 4] for i in range(0, len(addr), 4)).replace(" ", " ", 3)
+    res = Result(c.id, shown=["Spend:\n" + spaced], **base)
+    notes = judge_case(c, res).notes
+    assert not any("screen did not show" in n for n in notes)  # spacing is ignored
+    res = Result(c.id, shown=["Spend:\ntsp1qqsomethingelse"], **base)
+    assert any("screen did not show" in n for n in judge_case(c, res).notes)

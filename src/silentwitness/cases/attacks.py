@@ -7,11 +7,12 @@ Cases are deterministic: the same code always produces the same PSBTs.
 from __future__ import annotations
 
 from .. import psbt_raw as pr
+from .. import sp_address
 from .._secp import N
 from ..crypto import p2wpkh_script, p2wsh_script, point, ser256
 from ..model import Case, Expect
 from ..tx import Tx, TxOut
-from .builder import HOST, RECIPIENT, SPEND_PATH, TEST_MNEMONIC, USER, Scenario
+from .builder import HOST, NUMS_H, RECIPIENT, SPEND_PATH, TEST_MNEMONIC, USER, Scenario
 
 SOURCE = "silentwitness-attacks-v0"
 
@@ -413,6 +414,124 @@ def _send_cases() -> list[Case]:
             expected_scripts=s2.expected_scripts(),
             expected_change={0: False, 1: False},
             refusal_ok=True,
+        )
+    )
+
+    # S9c1: an input BIP 352 leaves out of the shared secret (a taproot input with the NUMS
+    # internal key) sits next to the signer's own input. The shared secret uses only the
+    # eligible inputs, while the smallest outpoint is taken over all of them. A signer that
+    # counts the ineligible input, or ignores its outpoint, derives outputs the recipient
+    # cannot find.
+    inel = Scenario("inel-nums")
+    inel.add_p2wpkh(IN_P2WPKH, 100_000)
+    inel.add_ineligible("nums", 50_000)
+    inel.pay_sp(RECIPIENT.scan, RECIPIENT.spend, 80_000)
+    inel.pay_p2wpkh_change(CHANGE_P2WPKH, 69_000)
+    cases.append(
+        _case(
+            "S9c1",
+            "valid: a NUMS-key taproot input beside the signer's own, which alone feeds the secret",
+            inel,
+            inel.psbt(),
+            Expect.SIGN,
+            rule="BIP 352: only eligible inputs feed the shared secret; outpoint_L spans all",
+            signed_inputs=(0,),
+            expected_scripts=inel.expected_scripts(),
+        )
+    )
+
+    # S9c2: an input spending a segwit version > 1 output next to SP outputs.
+    # BIP 375: "If any input is spending an output with script using Segwit version > 1,
+    # the Signer must fail."
+    v2 = Scenario("inel-v2")
+    v2.add_p2wpkh(IN_P2WPKH, 100_000)
+    v2.add_ineligible("v2", 50_000)
+    v2.pay_sp(RECIPIENT.scan, RECIPIENT.spend, 80_000)
+    v2.pay_p2wpkh_change(CHANGE_P2WPKH, 69_000)
+    cases.append(
+        _case(
+            "S9c2",
+            "an input spends a segwit v2 output while the transaction pays an sp1 address",
+            v2,
+            v2.psbt(),
+            Expect.REFUSE,
+            rule="BIP 375 Signer: MUST fail if any input spends segwit version > 1",
+            control="CTRL-SEND",
+        )
+    )
+
+    # S9d: the host marks the signer's OWN taproot input as NUMS so it drops out of the
+    # shared secret. The signer can see the output key is its own tweaked key, so it must
+    # either refuse or still count the input. BIP 375 gives no explicit refusal rule, so
+    # a refusal is accepted and the check is that any signed result is derived correctly.
+    mixed = _send("mixed", sp_change=False, mixed=True)
+    s9d = mixed.psbt()
+    pr.put(s9d.inputs[1], pr.PSBT_IN_TAP_INTERNAL_KEY, NUMS_H)
+    cases.append(
+        _case(
+            "S9d",
+            "host marks the signer's own taproot input as NUMS so it leaves the shared secret",
+            mixed,
+            s9d,
+            Expect.SIGN,
+            rule="BIP 352: eligibility follows the real input; outputs must include the own key",
+            control="CTRL-MIXED",
+            signed_inputs=(0, 1),
+            expected_scripts=mixed.expected_scripts(),
+            refusal_ok=True,
+            # The returned PSBT keeps the host's NUMS claim, so the reference validator drops
+            # that input from its sum and rejects the (correct) result. Judge the scripts and
+            # signatures instead.
+            meta={"reference_validator": False},
+        )
+    )
+
+    # D1-D3: what the user sees. The full silent payment address must be on screen, not only
+    # a bc1p / tb1p output. Compared without spaces (screens group addresses).
+    recipient_addr = sp_address.encode(RECIPIENT.scan, RECIPIENT.spend)
+    cases.append(
+        _case(
+            "D1",
+            "payment to an sp1 address: the screen shows the address",
+            send,
+            base,
+            Expect.DISPLAY,
+            rule="Display: the user must see the silent payment address they are paying",
+            signed_inputs=(0, 1),
+            expected_scripts=send.expected_scripts(),
+            expected_display=(recipient_addr,),
+        )
+    )
+    own_change_addr = sp_address.encode(USER.scan, USER.labeled_spend(0))
+    cases.append(
+        _case(
+            "D2",
+            "own SP change next to an sp1 payment: both addresses are shown",
+            change,
+            change.psbt(),
+            Expect.DISPLAY,
+            rule="Display: payment and own change are both visible to the user",
+            signed_inputs=(0, 1),
+            expected_scripts=change.expected_scripts(),
+            expected_display=(recipient_addr, own_change_addr),
+        )
+    )
+    labeled_pay = Scenario("labeled")
+    labeled_pay.add_p2wpkh(IN_P2WPKH, 100_000)
+    labeled_pay.add_p2wpkh(IN_P2WPKH_2, 50_000)
+    labeled_pay.pay_sp(RECIPIENT.scan, RECIPIENT.labeled_spend(1), 80_000)
+    labeled_pay.pay_p2wpkh_change(CHANGE_P2WPKH, 69_000)
+    cases.append(
+        _case(
+            "D3",
+            "payment to a labeled sp1 address: the screen shows the full labeled address",
+            labeled_pay,
+            labeled_pay.psbt(),
+            Expect.DISPLAY,
+            rule="Display: the label is part of the address, so the whole address must show",
+            signed_inputs=(0, 1),
+            expected_scripts=labeled_pay.expected_scripts(),
+            expected_display=(sp_address.encode(RECIPIENT.scan, RECIPIENT.labeled_spend(1)),),
         )
     )
     return cases
