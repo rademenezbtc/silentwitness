@@ -116,3 +116,31 @@ def test_s5_changes_only_the_other_signers_share():
     assert pr.get_all(b.inputs[1], pr.PSBT_IN_SP_DLEQ) == pr.get_all(
         ctrl.inputs[1], pr.PSBT_IN_SP_DLEQ
     )
+
+
+def _sp_outputs(psbt_b64):
+    raw = pr.parse(psbt_b64)
+    return [o for o in raw.outputs if pr.get(o, pr.PSBT_OUT_SP_V0_INFO) is not None]
+
+
+def test_s6_kmax_boundary_and_order():
+    cases = _by_id()
+    assert len(_sp_outputs(cases["CTRL-KMAX"].psbt)) == 2323
+    assert len(_sp_outputs(cases["S6a"].psbt)) == 2324
+
+    ctrl = pr.parse(cases["CTRL-ORDER"].psbt)
+    s6b = pr.parse(cases["S6b"].psbt)
+    assert s6b.inputs == ctrl.inputs
+    scripts = [pr.get(o, pr.PSBT_OUT_SCRIPT) for o in s6b.outputs[:2]]
+    expected = [bytes.fromhex(cases["CTRL-ORDER"].expected_scripts[i]) for i in (0, 1)]
+    assert scripts == expected[::-1]  # swapped relative to the correct k order
+    spends = [pr.get(o, pr.PSBT_OUT_SP_V0_INFO)[33:] for o in ctrl.outputs[:2]]
+    assert spends == sorted(spends)
+
+
+def test_s7_uses_the_largest_label():
+    s7 = pr.parse(_by_id()["S7"].psbt)
+    label = pr.get(s7.outputs[1], pr.PSBT_OUT_SP_V0_LABEL)
+    assert int.from_bytes(label, "little") == 0xFFFFFFFF
+    spend = pr.get(s7.outputs[1], pr.PSBT_OUT_SP_V0_INFO)[33:]
+    assert spend == USER.labeled_spend(0xFFFFFFFF)
