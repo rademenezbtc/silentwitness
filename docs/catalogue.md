@@ -56,9 +56,9 @@ sending to silent-payment addresses needs a rule before it becomes a case.
 |---|---|---|---|
 | P1 | `PSBT_IN_SP_TWEAK` not matching the output key | Refuse before signing | done |
 | P2 | Correct tweak copied from a different output | Refuse | done |
-| P3 | Missing or wrong `PSBT_IN_SP_SPEND_BIP32_DERIVATION` | Refuse | planned |
-| P4 | Tweaked key with odd Y | Valid signature | planned |
-| P5 | SP and ordinary inputs, also paying an SP address | Valid shares and signatures | planned |
+| P3a, P3b | Spend derivation missing, or naming the host's key | Sign with the signer's own key (valid signatures) or refuse; the derivation is only a SHOULD in BIP 376 | done |
+| P4 | Tweaked key with odd Y | Valid signature | done |
+| P5 | SP and ordinary inputs, also paying an SP address | Valid shares and signatures | done |
 
 ## Display (real devices and simulators)
 

@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from .. import psbt_raw as pr
 from .._secp import N
-from ..crypto import p2wpkh_script, p2wsh_script, ser256
+from ..crypto import p2wpkh_script, p2wsh_script, point, ser256
 from ..model import Case, Expect
 from ..tx import Tx, TxOut
-from .builder import HOST, RECIPIENT, TEST_MNEMONIC, USER, Scenario
+from .builder import HOST, RECIPIENT, SPEND_PATH, TEST_MNEMONIC, USER, Scenario
 
 SOURCE = "silentwitness-attacks-v0"
 
@@ -256,6 +256,91 @@ def _spend_cases() -> list[Case]:
             Expect.REFUSE,
             rule="BIP 376 Signer: MUST fail if x(d·G) != P",
             control="CTRL-SPEND",
+        )
+    )
+
+    # P3a: the SP spend derivation is missing. BIP 376 makes the field a SHOULD and
+    # lets the signer find its spend key "using other methods", so signing with its
+    # own key is correct; refusing is also acceptable. Never sign for another key.
+    p3a = base.copy()
+    pr.remove(p3a.inputs[0], pr.PSBT_IN_SP_SPEND_BIP32_DERIVATION)
+    cases.append(
+        _case(
+            "P3a",
+            "input 0 has no PSBT_IN_SP_SPEND_BIP32_DERIVATION",
+            sc,
+            p3a,
+            Expect.SIGN,
+            rule="BIP 376 Signer: derivation is a SHOULD; spend key may come from other methods",
+            control="CTRL-SPEND",
+            signed_inputs=(1,),  # input 0 may be left unsigned: the signer cannot locate its key
+            refusal_ok=True,
+        )
+    )
+
+    # P3b: the derivation names the host's spend key, which the signer does not hold.
+    # Same rule: a valid signature from the signer's own key, or a refusal.
+    p3b = base.copy()
+    pr.remove(p3b.inputs[0], pr.PSBT_IN_SP_SPEND_BIP32_DERIVATION)
+    pr.put(
+        p3b.inputs[0],
+        pr.PSBT_IN_SP_SPEND_BIP32_DERIVATION,
+        HOST.wallet.origin(SPEND_PATH),
+        key_data=HOST.spend,
+    )
+    cases.append(
+        _case(
+            "P3b",
+            "input 0's spend derivation names the host's key, not the signer's",
+            sc,
+            p3b,
+            Expect.SIGN,
+            rule="BIP 376 Signer: signs only with its own key; the tweak check protects the output",
+            control="CTRL-SPEND",
+            signed_inputs=(1,),  # input 0 may be left unsigned: the signer cannot locate its key
+            refusal_ok=True,
+        )
+    )
+
+    # P4: tweaked output key with odd Y. The signer must negate the tweaked
+    # private key, otherwise the BIP 340 signature does not verify.
+    for k in range(32):
+        odd = Scenario("spend-odd")
+        odd.add_sp_received(60_000, k=k)
+        d = (odd.user.b_spend + odd.inputs[0].tweak) % N
+        if not point(d).has_even_y():
+            break
+    else:
+        raise AssertionError("no odd-Y silent-payment output found")
+    odd.pay_script(p2wpkh_script(RECIPIENT.wallet.pub(IN_P2WPKH)), 59_000)
+    cases.append(
+        _case(
+            "P4",
+            f"spend a silent-payment output whose tweaked key has odd Y (k={k})",
+            odd,
+            odd.psbt(),
+            Expect.SIGN,
+            rule="BIP 376 Signer: BIP 340 signature for a key with odd Y",
+            signed_inputs=(0,),
+        )
+    )
+
+    # P5: SP-received and ordinary inputs together, paying an sp1 address.
+    mixed = Scenario("mixed")
+    mixed.add_sp_received(60_000, k=0)
+    mixed.add_p2wpkh(IN_P2WPKH, 50_000)
+    mixed.pay_sp(RECIPIENT.scan, RECIPIENT.spend, 90_000)
+    mixed.pay_p2wpkh_change(CHANGE_P2WPKH, 19_000)
+    cases.append(
+        _case(
+            "P5",
+            "spend an SP output and an ordinary input together while paying an sp1 address",
+            mixed,
+            mixed.psbt(),
+            Expect.SIGN,
+            rule="BIP 375 + BIP 376 Signer: shared secret over all inputs, valid signatures",
+            signed_inputs=(0, 1),
+            expected_scripts=mixed.expected_scripts(),
         )
     )
     return cases
