@@ -16,6 +16,7 @@ from .builder import HOST, RECIPIENT, SPEND_PATH, TEST_MNEMONIC, USER, Scenario
 SOURCE = "silentwitness-attacks-v0"
 
 IN_P2WPKH = "m/84h/1h/0h/0/0"
+IN_P2WPKH_2 = "m/84h/1h/0h/0/1"
 IN_P2TR = "m/86h/1h/0h/0/0"
 CHANGE_P2WPKH = "m/84h/1h/0h/1/0"
 
@@ -35,10 +36,15 @@ def _case(id: str, title: str, sc: Scenario, psbt: pr.RawPSBT, expect: Expect, *
 # -- sending -------------------------------------------------------------------
 
 
-def _send(tag: str, sp_change: bool) -> Scenario:
+def _send(tag: str, sp_change: bool, mixed: bool = False) -> Scenario:
+    """Two inputs. Both P2WPKH by default, because some signers (Krux) accept only one
+    script type per transaction; `mixed` swaps the second for P2TR (see CTRL-MIXED)."""
     sc = Scenario(tag)
     sc.add_p2wpkh(IN_P2WPKH, 100_000)
-    sc.add_p2tr(IN_P2TR, 50_000)
+    if mixed:
+        sc.add_p2tr(IN_P2TR, 50_000)
+    else:
+        sc.add_p2wpkh(IN_P2WPKH_2, 50_000)
     sc.pay_sp(RECIPIENT.scan, RECIPIENT.spend, 80_000)
     if sp_change:
         sc.pay_sp_change(69_000)
@@ -56,13 +62,29 @@ def _send_cases() -> list[Case]:
     cases.append(
         _case(
             "CTRL-SEND",
-            "valid: P2WPKH + P2TR inputs pay an sp1 address, P2WPKH change",
+            "valid: two P2WPKH inputs pay an sp1 address, P2WPKH change",
             send,
             base,
             Expect.SIGN,
             rule="BIP 375 Signer",
             signed_inputs=(0, 1),
             expected_scripts=send.expected_scripts(),
+        )
+    )
+
+    # Taproot input hash: a P2WPKH and a P2TR input together (BIP 352 negates the
+    # taproot key when its Y is odd). Some signers accept one script type only.
+    mixed = _send("mixed", sp_change=False, mixed=True)
+    cases.append(
+        _case(
+            "CTRL-MIXED",
+            "valid: P2WPKH + P2TR inputs pay an sp1 address, P2WPKH change",
+            mixed,
+            mixed.psbt(),
+            Expect.SIGN,
+            rule="BIP 352/375: input hash and shared secret over mixed input types",
+            signed_inputs=(0, 1),
+            expected_scripts=mixed.expected_scripts(),
         )
     )
 
@@ -168,6 +190,7 @@ def _send_cases() -> list[Case]:
             rule="BIP 375 Signer: verifies other signers' DLEQ proofs, adds its own share",
             signed_inputs=(0,),
             expected_scripts=multi.expected_scripts(),
+            meta={"multi_party": True},
         )
     )
 
@@ -186,6 +209,7 @@ def _send_cases() -> list[Case]:
             Expect.REFUSE,
             rule="BIP 375 Signer: MUST verify DLEQ proofs of shares it did not compute",
             control="CTRL-MULTI",
+            meta={"multi_party": True},
         )
     )
 
@@ -202,6 +226,7 @@ def _send_cases() -> list[Case]:
             Expect.REFUSE,
             rule="BIP 375 Signer: MUST verify DLEQ proofs of shares it did not compute",
             control="CTRL-MULTI",
+            meta={"multi_party": True},
         )
     )
 
@@ -224,6 +249,7 @@ def _send_cases() -> list[Case]:
             Expect.REFUSE,
             rule="BIP 375: a global share must cover all eligible inputs",
             control="CTRL-MULTI",
+            meta={"multi_party": True},
         )
     )
 
@@ -232,7 +258,7 @@ def _send_cases() -> list[Case]:
     # the k values swapped, so the signer must notice the scripts are wrong.
     order = Scenario("order")
     order.add_p2wpkh(IN_P2WPKH, 100_000)
-    order.add_p2tr(IN_P2TR, 50_000)
+    order.add_p2wpkh(IN_P2WPKH_2, 50_000)
     spends = sorted([RECIPIENT.spend, RECIPIENT.labeled_spend(1)])
     order.pay_sp(RECIPIENT.scan, spends[0], 70_000)
     order.pay_sp(RECIPIENT.scan, spends[1], 70_000)
@@ -274,7 +300,7 @@ def _send_cases() -> list[Case]:
     ):
         big = Scenario("kmax")
         big.add_p2wpkh(IN_P2WPKH, 100_000)
-        big.add_p2tr(IN_P2TR, 50_000)
+        big.add_p2wpkh(IN_P2WPKH_2, 50_000)
         for _ in range(n):
             big.pay_sp(RECIPIENT.scan, RECIPIENT.spend, 60)
         extra = {} if expect is Expect.REFUSE else {"signed_inputs": (0, 1)}

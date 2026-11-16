@@ -110,3 +110,41 @@ def test_environment_is_scrubbed(tmp_path, monkeypatch):
         assert a.run(_case()).outcome is Outcome.REFUSED
     finally:
         a.teardown()
+
+
+def _refusing_worker(tmp_path, message):
+    return _worker(
+        tmp_path,
+        f"""
+        import json, sys
+        for line in sys.stdin:
+            r = json.loads(line)
+            resp = {{"id": r["id"], "outcome": "refused", "reason": {message!r}}}
+            print(json.dumps(resp), flush=True)
+        """,
+    )
+
+
+def test_unsupported_features_are_skips_not_refusals(tmp_path):
+    a = KruxHeadless(
+        worker=_refusing_worker(tmp_path, "ValueError: Invalid PSBT: mixed inputs in the tx"),
+        krux_dir=_fake_krux(tmp_path),
+    )
+    a.setup()
+    try:
+        r = a.run(_case())
+    finally:
+        a.teardown()
+    assert r.outcome is Outcome.SKIPPED and "one script type" in r.reason
+
+
+def test_multi_party_refusal_is_a_skip_only_for_multi_party_cases(tmp_path):
+    msg = "ValueError: input 1 key could not be derived from this wallet"
+    a = KruxHeadless(worker=_refusing_worker(tmp_path, msg), krux_dir=_fake_krux(tmp_path))
+    a.setup()
+    try:
+        multi = next(c for c in get_suite("attacks") if c.id == "CTRL-MULTI")
+        assert a.run(multi).outcome is Outcome.SKIPPED
+        assert a.run(_case()).outcome is Outcome.REFUSED  # an ordinary case: a real refusal
+    finally:
+        a.teardown()

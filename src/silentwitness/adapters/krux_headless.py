@@ -139,6 +139,23 @@ class KruxHeadless(Adapter):
                 reason="worker died, hung or sent garbage",
                 duration_s=took,
             )
+        reason = resp.get("reason", "")
+        if resp["outcome"] == "refused":
+            # Missing features, not verdicts: do not score Krux on a valid control it cannot run.
+            if "mixed inputs in the tx" in reason:
+                return Result(
+                    case.id,
+                    Outcome.SKIPPED,
+                    reason=f"Krux accepts one script type per transaction ({reason})",
+                    duration_s=took,
+                )
+            if case.meta.get("multi_party"):
+                return Result(
+                    case.id,
+                    Outcome.SKIPPED,
+                    reason=f"Krux does not sign for other parties' inputs ({reason})",
+                    duration_s=took,
+                )
         change = resp.get("change")
         return Result(
             case.id,
