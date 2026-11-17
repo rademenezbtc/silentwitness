@@ -19,6 +19,7 @@ SOURCE = "silentwitness-attacks-v0"
 IN_P2WPKH = "m/84h/1h/0h/0/0"
 IN_P2WPKH_2 = "m/84h/1h/0h/0/1"
 IN_P2TR = "m/86h/1h/0h/0/0"
+IN_P2TR_2 = "m/86h/1h/0h/0/1"
 CHANGE_P2WPKH = "m/84h/1h/0h/1/0"
 
 
@@ -437,6 +438,7 @@ def _send_cases() -> list[Case]:
             rule="BIP 352: only eligible inputs feed the shared secret; outpoint_L spans all",
             signed_inputs=(0,),
             expected_scripts=inel.expected_scripts(),
+            meta={"multi_party": True},  # the NUMS input is another party's
         )
     )
 
@@ -483,6 +485,100 @@ def _send_cases() -> list[Case]:
             # that input from its sum and rejects the (correct) result. Judge the scripts and
             # signatures instead.
             meta={"reference_validator": False},
+        )
+    )
+
+    # Taproot-only versions of the mixed-type cases, for signers that take one script type
+    # per transaction. Same questions, no P2WPKH input next to a taproot one.
+    tr = Scenario("tr")
+    tr.add_p2tr(IN_P2TR, 100_000)
+    tr.add_p2tr(IN_P2TR_2, 50_000)
+    tr.pay_sp(RECIPIENT.scan, RECIPIENT.spend, 80_000)
+    tr.pay_p2wpkh_change(CHANGE_P2WPKH, 69_000)
+    cases.append(
+        _case(
+            "CTRL-TR",
+            "valid: two P2TR inputs pay an sp1 address, P2WPKH change",
+            tr,
+            tr.psbt(),
+            Expect.SIGN,
+            rule="BIP 352/375: shared secret over taproot inputs (odd-Y keys are negated)",
+            signed_inputs=(0, 1),
+            expected_scripts=tr.expected_scripts(),
+        )
+    )
+
+    inel_tr = Scenario("inel-nums-tr")
+    inel_tr.add_p2tr(IN_P2TR, 100_000)
+    inel_tr.add_ineligible("nums", 50_000)
+    inel_tr.pay_sp(RECIPIENT.scan, RECIPIENT.spend, 80_000)
+    inel_tr.pay_p2wpkh_change(CHANGE_P2WPKH, 69_000)
+    cases.append(
+        _case(
+            "S9c1-TR",
+            "valid: a NUMS-key taproot input beside the signer's own taproot input",
+            inel_tr,
+            inel_tr.psbt(),
+            Expect.SIGN,
+            rule="BIP 352: only eligible inputs feed the shared secret; outpoint_L spans all",
+            signed_inputs=(0,),
+            expected_scripts=inel_tr.expected_scripts(),
+            meta={"multi_party": True},  # the NUMS input is another party's
+        )
+    )
+
+    s9d_tr = tr.psbt()
+    pr.put(s9d_tr.inputs[1], pr.PSBT_IN_TAP_INTERNAL_KEY, NUMS_H)
+    cases.append(
+        _case(
+            "S9d-TR",
+            "host marks one of the signer's own taproot inputs as NUMS so it leaves the secret",
+            tr,
+            s9d_tr,
+            Expect.SIGN,
+            rule="BIP 352: eligibility follows the real input; outputs must include the own key",
+            control="CTRL-TR",
+            signed_inputs=(0, 1),
+            expected_scripts=tr.expected_scripts(),
+            refusal_ok=True,
+            meta={"reference_validator": False},  # the returned PSBT keeps the host's NUMS claim
+        )
+    )
+
+    spend_tr = Scenario("spend-tr")
+    spend_tr.add_sp_received(60_000, k=0)
+    spend_tr.add_p2tr(IN_P2TR, 50_000)
+    spend_tr.pay_sp(RECIPIENT.scan, RECIPIENT.spend, 90_000)
+    spend_tr.pay_p2wpkh_change(CHANGE_P2WPKH, 19_000)
+    cases.append(
+        _case(
+            "P5-TR",
+            "spend an SP output and an ordinary taproot input together while paying an sp1 address",
+            spend_tr,
+            spend_tr.psbt(),
+            Expect.SIGN,
+            rule="BIP 375 + BIP 376 Signer: shared secret over all inputs, valid signatures",
+            signed_inputs=(0, 1),
+            expected_scripts=spend_tr.expected_scripts(),
+        )
+    )
+
+    # S9c3: the segwit v2 script is visible only through the previous transaction
+    # (PSBT_IN_NON_WITNESS_UTXO), a path BIP 375's own vectors test. Same rule as S9c2.
+    v2_nw = Scenario("inel-v2-nw")
+    v2_nw.add_p2wpkh(IN_P2WPKH, 100_000)
+    v2_nw.add_ineligible("v2", 50_000, non_witness=True)
+    v2_nw.pay_sp(RECIPIENT.scan, RECIPIENT.spend, 80_000)
+    v2_nw.pay_p2wpkh_change(CHANGE_P2WPKH, 69_000)
+    cases.append(
+        _case(
+            "S9c3",
+            "a segwit v2 output (seen only in the previous transaction) beside an sp1 output",
+            v2_nw,
+            v2_nw.psbt(),
+            Expect.REFUSE,
+            rule="BIP 375 Signer: MUST fail if any input spends segwit version > 1",
+            control="CTRL-SEND",
         )
     )
 

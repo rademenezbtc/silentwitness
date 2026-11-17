@@ -26,6 +26,7 @@ if its control passes too.
 | ID | Case | Expected | Status |
 |---|---|---|---|
 | CTRL-SEND | P2WPKH + P2TR inputs pay an `sp1` address, P2WPKH change | Sign; outputs match independent BIP 352 derivation; signatures verify | done |
+| CTRL-TR | Two P2TR inputs pay an `sp1` address, P2WPKH change | Sign; outputs match independent derivation; signatures verify | done |
 | CTRL-CHANGE | Same, with SP change (label 0) and BIP 375 change derivations | Sign; output 1 treated as change, or shown as a payment (safe: change detection is optional in BIP 375) | done (needs an adapter that reports change) |
 | CTRL-MULTI | Two signers: the other party's input carries a correct share and proof | Sign input 0; outputs match independent derivation | built (needs a multi-party signer) |
 | CTRL-ORDER | Two same-scan outputs, `k` by sorted spend key | Sign; outputs match independent derivation | done |
@@ -51,6 +52,8 @@ if its control passes too.
 | S9c1 | NUMS-key taproot input beside the signer's own | Sign; only eligible inputs feed the shared secret, outpoint_L spans all | done |
 | S9c2 | Input spending a segwit v2 output while paying an sp1 address | Refuse (BIP 375: the Signer must fail) | done |
 | S9d | Host marks the signer's own taproot input as NUMS | Sign with the own input counted, or refuse | done |
+| S9c1-TR, S9d-TR | The S9c1 and S9d questions on a taproot-only transaction, for signers that take one script type per transaction | As S9c1 and S9d | done |
+| S9c3 | Segwit v2 output visible only through `PSBT_IN_NON_WITNESS_UTXO`, with an sp1 output | Refuse (BIP 375: the Signer must fail) | done |
 
 Labels above 2^32 cannot be encoded in the 4-byte field; a wrong-length label is already covered by the BIP 375 baseline vectors, so S7 tests the valid edge.
 
@@ -68,6 +71,7 @@ sending to silent-payment addresses needs a rule before it becomes a case.
 | P3a, P3b | Spend derivation missing, or naming the host's key | Sign with the signer's own key (valid signatures) or refuse; the derivation is only a SHOULD in BIP 376 | done |
 | P4 | Tweaked key with odd Y | Valid signature | done |
 | P5 | SP and ordinary inputs, also paying an SP address | Valid shares and signatures | done |
+| P5-TR | SP-received and an ordinary taproot input, also paying an SP address (one script type) | Valid shares and signatures | done |
 
 ## Display (real devices and simulators)
 

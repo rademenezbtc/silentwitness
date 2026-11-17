@@ -148,7 +148,7 @@ class Scenario:
         self.inputs.append(_Input(e, even_y_priv(q_priv), op))
         return len(self.inputs) - 1
 
-    def add_ineligible(self, kind: str, amount: int) -> int:
+    def add_ineligible(self, kind: str, amount: int, non_witness: bool = False) -> int:
         """Another party's input that BIP 352 leaves out of the shared secret.
 
         kind "nums": P2TR whose internal key is the NUMS point H (script-path only).
@@ -163,7 +163,10 @@ class Scenario:
         else:
             raise ValueError(kind)
         tx = self._funding(amount, spk)
-        pr.put(e, pr.PSBT_IN_WITNESS_UTXO, TxOut(amount, spk).serialize())
+        if non_witness:  # the script is visible only through the previous transaction
+            pr.put(e, pr.PSBT_IN_NON_WITNESS_UTXO, tx.serialize())
+        else:
+            pr.put(e, pr.PSBT_IN_WITNESS_UTXO, TxOut(amount, spk).serialize())
         op = self._outpoint(e, tx)
         self.inputs.append(_Input(e, 0, op, eligible=False))
         return len(self.inputs) - 1

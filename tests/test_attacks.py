@@ -229,3 +229,35 @@ def test_display_judgement_skips_without_screens_and_ignores_spacing():
     assert not any("screen did not show" in n for n in notes)  # spacing is ignored
     res = Result(c.id, shown=["Spend:\ntsp1qqsomethingelse"], **base)
     assert any("screen did not show" in n for n in judge_case(c, res).notes)
+
+
+def test_taproot_only_cases_use_one_script_type():
+    cases = _by_id()
+    for cid in ("CTRL-TR", "S9c1-TR", "S9d-TR", "P5-TR"):
+        raw = pr.parse(cases[cid].psbt)
+        kinds = {
+            pr.get(i, pr.PSBT_IN_WITNESS_UTXO)[9:11] for i in raw.inputs
+        }  # OP_1 PUSH32 for every input: taproot only
+        assert kinds == {b"\x51\x20"}, cid
+    assert cases["S9d-TR"].control == "CTRL-TR"
+    assert cases["S9d-TR"].meta == {"reference_validator": False}
+
+
+def test_s9d_tr_only_marks_one_own_input_as_nums():
+    from silentwitness.cases.builder import NUMS_H
+
+    cases = _by_id()
+    ctrl, s9d = pr.parse(cases["CTRL-TR"].psbt), pr.parse(cases["S9d-TR"].psbt)
+    assert s9d.outputs == ctrl.outputs and s9d.inputs[0] == ctrl.inputs[0]
+    assert pr.get(s9d.inputs[1], pr.PSBT_IN_TAP_INTERNAL_KEY) == NUMS_H
+    assert (
+        cases["S9d-TR"].expected_scripts == cases["CTRL-TR"].expected_scripts
+    )  # own input counted
+
+
+def test_s9c3_shows_the_v2_script_only_through_the_previous_transaction():
+    raw = pr.parse(_by_id()["S9c3"].psbt)
+    v2 = raw.inputs[1]
+    assert pr.get(v2, pr.PSBT_IN_WITNESS_UTXO) is None
+    assert pr.get(v2, pr.PSBT_IN_NON_WITNESS_UTXO) is not None
+    assert _by_id()["S9c3"].control == "CTRL-SEND"
