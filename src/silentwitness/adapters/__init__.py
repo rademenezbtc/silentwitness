@@ -20,9 +20,16 @@ def _krux() -> Adapter:
     return KruxHeadless()
 
 
+def _rust_psbt() -> Adapter:
+    from .rust_psbt import RustPsbt
+
+    return RustPsbt()
+
+
 ADAPTERS: dict[str, Callable[[], Adapter]] = {
     "embit": _embit,
     "krux": _krux,
+    "rust-psbt": _rust_psbt,
 }
 
 

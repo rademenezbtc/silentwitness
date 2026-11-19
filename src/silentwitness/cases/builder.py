@@ -265,6 +265,15 @@ class Scenario:
             g, [list(i.entries) for i in self.inputs], [list(o) for o in self.outputs]
         )
 
+    def sp_shares(self) -> dict[int, dict[str, tuple[str, str]]]:
+        """ECDH shares and DLEQ proofs the signer adds for each eligible input and scan key."""
+        scans = sorted({scan for scan, _ in self.codes.values()})
+        return {
+            idx: {scan.hex(): tuple(x.hex() for x in self.share_for(idx, scan)) for scan in scans}
+            for idx, i in enumerate(self.inputs)
+            if i.eligible and scans
+        }
+
     def expected_scripts(self) -> dict[int, str]:
         """BIP 352/375 output scripts for every SP output. Only eligible inputs add their
         key to the shared secret; the smallest outpoint is taken over all inputs."""

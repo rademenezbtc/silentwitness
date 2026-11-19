@@ -24,6 +24,12 @@ CHANGE_P2WPKH = "m/84h/1h/0h/1/0"
 
 
 def _case(id: str, title: str, sc: Scenario, psbt: pr.RawPSBT, expect: Expect, **kw) -> Case:
+    # What an honest signer adds to the host's PSBT, and the scripts a correct BIP 352
+    # derivation gives. Adapters for signers that compute both themselves ignore them; one
+    # for a library that only checks and signs needs them. K_max cases (thousands of
+    # outputs) carry no scripts: deriving them is too slow to do while building the suite.
+    kw.setdefault("sp_shares", sc.sp_shares())
+    kw.setdefault("expected_scripts", sc.expected_scripts() if len(sc.codes) <= 100 else {})
     return Case(
         id=id,
         title=title,
@@ -71,6 +77,7 @@ def _send_cases() -> list[Case]:
             rule="BIP 375 Signer",
             signed_inputs=(0, 1),
             expected_scripts=send.expected_scripts(),
+            sp_shares=send.sp_shares(),
         )
     )
 
@@ -87,6 +94,7 @@ def _send_cases() -> list[Case]:
             rule="BIP 352/375: input hash and shared secret over mixed input types",
             signed_inputs=(0, 1),
             expected_scripts=mixed.expected_scripts(),
+            sp_shares=mixed.sp_shares(),
         )
     )
 
@@ -192,6 +200,7 @@ def _send_cases() -> list[Case]:
             rule="BIP 375 Signer: verifies other signers' DLEQ proofs, adds its own share",
             signed_inputs=(0,),
             expected_scripts=multi.expected_scripts(),
+            sp_shares=multi.sp_shares(),
             meta={"multi_party": True},
         )
     )
@@ -275,6 +284,7 @@ def _send_cases() -> list[Case]:
             rule="BIP 375 Signer: k follows the lexicographic order of the spend keys",
             signed_inputs=(0, 1),
             expected_scripts=order.expected_scripts(),
+            sp_shares=order.sp_shares(),
         )
     )
     # Same two codes, outputs listed in descending spend-key order. BIP 375 assigns k by
@@ -296,6 +306,7 @@ def _send_cases() -> list[Case]:
             rule="BIP 375 Signer: k follows the sorted spend keys, not the output index",
             signed_inputs=(0, 1),
             expected_scripts=desc.expected_scripts(),
+            sp_shares=desc.sp_shares(),
         )
     )
 
@@ -358,6 +369,7 @@ def _send_cases() -> list[Case]:
             rule="BIP 352/375: label is an unsigned 32-bit integer",
             signed_inputs=(0, 1),
             expected_scripts=edge.expected_scripts(),
+            sp_shares=edge.sp_shares(),
         )
     )
 
@@ -373,6 +385,7 @@ def _send_cases() -> list[Case]:
             rule="BIP 375 Change Detection",
             signed_inputs=(0, 1),
             expected_scripts=change.expected_scripts(),
+            sp_shares=change.sp_shares(),
             expected_change={0: False, 1: True},
         )
     )
@@ -393,6 +406,7 @@ def _send_cases() -> list[Case]:
             control="CTRL-CHANGE",
             signed_inputs=(0, 1),
             expected_scripts=s1.expected_scripts(),
+            sp_shares=s1.sp_shares(),
             expected_change={0: False, 1: False},
         )
     )
@@ -413,6 +427,7 @@ def _send_cases() -> list[Case]:
             control="CTRL-CHANGE",
             signed_inputs=(0, 1),
             expected_scripts=s2.expected_scripts(),
+            sp_shares=s2.sp_shares(),
             expected_change={0: False, 1: False},
             refusal_ok=True,
         )
@@ -438,6 +453,7 @@ def _send_cases() -> list[Case]:
             rule="BIP 352: only eligible inputs feed the shared secret; outpoint_L spans all",
             signed_inputs=(0,),
             expected_scripts=inel.expected_scripts(),
+            sp_shares=inel.sp_shares(),
             meta={"multi_party": True},  # the NUMS input is another party's
         )
     )
@@ -480,6 +496,7 @@ def _send_cases() -> list[Case]:
             control="CTRL-MIXED",
             signed_inputs=(0, 1),
             expected_scripts=mixed.expected_scripts(),
+            sp_shares=mixed.sp_shares(),
             refusal_ok=True,
             # The returned PSBT keeps the host's NUMS claim, so the reference validator drops
             # that input from its sum and rejects the (correct) result. Judge the scripts and
@@ -505,6 +522,7 @@ def _send_cases() -> list[Case]:
             rule="BIP 352/375: shared secret over taproot inputs (odd-Y keys are negated)",
             signed_inputs=(0, 1),
             expected_scripts=tr.expected_scripts(),
+            sp_shares=tr.sp_shares(),
         )
     )
 
@@ -523,6 +541,7 @@ def _send_cases() -> list[Case]:
             rule="BIP 352: only eligible inputs feed the shared secret; outpoint_L spans all",
             signed_inputs=(0,),
             expected_scripts=inel_tr.expected_scripts(),
+            sp_shares=inel_tr.sp_shares(),
             meta={"multi_party": True},  # the NUMS input is another party's
         )
     )
@@ -540,6 +559,7 @@ def _send_cases() -> list[Case]:
             control="CTRL-TR",
             signed_inputs=(0, 1),
             expected_scripts=tr.expected_scripts(),
+            sp_shares=tr.sp_shares(),
             refusal_ok=True,
             meta={"reference_validator": False},  # the returned PSBT keeps the host's NUMS claim
         )
@@ -560,6 +580,7 @@ def _send_cases() -> list[Case]:
             rule="BIP 375 + BIP 376 Signer: shared secret over all inputs, valid signatures",
             signed_inputs=(0, 1),
             expected_scripts=spend_tr.expected_scripts(),
+            sp_shares=spend_tr.sp_shares(),
         )
     )
 
@@ -595,6 +616,7 @@ def _send_cases() -> list[Case]:
             rule="Display: the user must see the silent payment address they are paying",
             signed_inputs=(0, 1),
             expected_scripts=send.expected_scripts(),
+            sp_shares=send.sp_shares(),
             expected_display=(recipient_addr,),
         )
     )
@@ -609,6 +631,7 @@ def _send_cases() -> list[Case]:
             rule="Display: payment and own change are both visible to the user",
             signed_inputs=(0, 1),
             expected_scripts=change.expected_scripts(),
+            sp_shares=change.sp_shares(),
             expected_display=(recipient_addr, own_change_addr),
         )
     )
@@ -627,6 +650,7 @@ def _send_cases() -> list[Case]:
             rule="Display: the label is part of the address, so the whole address must show",
             signed_inputs=(0, 1),
             expected_scripts=labeled_pay.expected_scripts(),
+            sp_shares=labeled_pay.sp_shares(),
             expected_display=(sp_address.encode(RECIPIENT.scan, RECIPIENT.labeled_spend(1)),),
         )
     )
@@ -765,6 +789,7 @@ def _spend_cases() -> list[Case]:
             rule="BIP 375 + BIP 376 Signer: shared secret over all inputs, valid signatures",
             signed_inputs=(0, 1),
             expected_scripts=mixed.expected_scripts(),
+            sp_shares=mixed.sp_shares(),
         )
     )
     return cases

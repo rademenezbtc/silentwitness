@@ -20,3 +20,17 @@ jobs:
       - run: ruff check . && ruff format --check .
       - run: silentwitness verify-vectors
       - run: pytest -q
+
+  # The rust-psbt harness is Rust code pinned to an unmerged crate commit: it must keep
+  # building, formatted and warning-free, with the committed lockfile.
+  harness:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/rust_psbt_harness
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
+      - run: cargo +stable fmt --check
+      - run: cargo +stable clippy --locked -- -D warnings
+      - run: cargo +stable build --release --locked

@@ -12,3 +12,4 @@ scorecard/site/
 build/
 dist/
 .DS_Store
+tools/rust_psbt_harness/target/
