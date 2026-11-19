@@ -12,7 +12,7 @@ index 5d6ba52..e9798cf 100644
  tiny-keccak = { version = "2.0", features = ["keccak"] }
  rlp = "0.6"
 diff --git a/src/btc.rs b/src/btc.rs
-index 8280d43..f280eb4 100644
+index 8280d43..46ba3ee 100644
 --- a/src/btc.rs
 +++ b/src/btc.rs
 @@ -204,6 +204,15 @@ impl TryFrom<&bitcoin::TxOut> for TxExternalOutput {
@@ -132,8 +132,22 @@ index 8280d43..f280eb4 100644
          let _api_call = self.begin_api_call().await;
          // since v9.15.0, the BitBox02 accepts "internal" outputs (ones sent to the BitBox02 with
          // the keypath) even if the keypath is not a change keypath. PSBTs often contain the key
-@@ -1063,10 +1111,22 @@ impl<R: Runtime> PairedBitBox<R> {
-             psbt,
+@@ -1057,16 +1105,35 @@ impl<R: Runtime> PairedBitBox<R> {
+         self.validate_version(">=9.15.0")?;
+ 
+         let our_root_fingerprint = self.root_fingerprint_inner().await?;
++        // A silent-payment output has no script yet (the device generates it), so give those
++        // outputs a placeholder before the PSBT is converted. The placeholder is never sent.
++        let mut psbt_for_conversion = psbt.clone();
++        for idx in sp_outputs.keys() {
++            psbt_for_conversion.unsigned_tx.output[*idx].script_pubkey =
++                bitcoin::ScriptBuf::new_p2wpkh(&<bitcoin::WPubkeyHash as bitcoin::hashes::Hash>::all_zeros());
++        }
+         let psbt_transaction = Transaction::from_psbt(
+             self.version(),
+             &our_root_fingerprint,
+-            psbt,
++            &psbt_for_conversion,
              force_script_config,
          )?;
 -        let signatures = self
@@ -157,7 +171,7 @@ index 8280d43..f280eb4 100644
                  &psbt_transaction.output_script_configs,
                  &psbt_transaction.output_script_config_indices,
                  format_unit,
-@@ -1103,7 +1163,7 @@ impl<R: Runtime> PairedBitBox<R> {
+@@ -1103,7 +1170,7 @@ impl<R: Runtime> PairedBitBox<R> {
                  }
              }
          }
