@@ -1,0 +1,60 @@
+name: bitbox02-spike
+
+# Spike: can a host send a BIP 352 silent-payment output to the BitBox02 firmware simulator and
+# get the generated output script and DLEQ proof back? bitbox-api-rs has no silent-payment support
+# yet, so a small patch (tools/bitbox02_spike/sp-spike.patch) is applied at a pinned commit.
+#
+# Third-party code (bitbox-api-rs, the firmware simulator) runs only here, never on a developer
+# machine: pinned commit, simulator verified by sha256, read-only permissions, no secrets.
+
+on:
+  push:
+    branches: [bitbox02-adapter]
+    paths:
+      - ".github/workflows/bitbox02-spike.yml"
+      - "tools/bitbox02_spike/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bitbox02-spike-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  spike:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BITBOX_API_COMMIT: 0663f047bdbe821ef2bbcda58620b8e828f961df
+      SIM_VERSION: v9.27.1
+      SIM_SHA256: 0b049efb21dcf8a447e9f46c660c731e38fb83101023d4f80f1f423ddaa4126b
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install stable --profile minimal
+      - name: Fetch bitbox-api-rs at the pinned commit and apply the spike patch
+        run: |
+          git clone https://github.com/BitBoxSwiss/bitbox-api-rs.git "$RUNNER_TEMP/bitbox-api-rs"
+          git -C "$RUNNER_TEMP/bitbox-api-rs" checkout "$BITBOX_API_COMMIT"
+          git -C "$RUNNER_TEMP/bitbox-api-rs" apply --verbose "$GITHUB_WORKSPACE/tools/bitbox02_spike/sp-spike.patch"
+      - name: Fetch the firmware simulator and verify its checksum
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/sim.bin" \
+            "https://github.com/BitBoxSwiss/bitbox02-firmware/releases/download/firmware%2F${SIM_VERSION}/bitbox02-multi-${SIM_VERSION}-simulator1.0.0-linux-amd64"
+          echo "$SIM_SHA256  $RUNNER_TEMP/sim.bin" | sha256sum -c
+          chmod +x "$RUNNER_TEMP/sim.bin"
+      - name: Run the spike against the simulator
+        working-directory: ${{ runner.temp }}/bitbox-api-rs
+        env:
+          SIMULATOR: ${{ runner.temp }}/sim.bin
+        run: |
+          set -o pipefail
+          cargo +stable test --features simulator,tokio --test spike_sp -- --nocapture --test-threads 1 \
+            2>&1 | tee "$RUNNER_TEMP/spike.log"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitbox02-spike-log
+          path: ${{ runner.temp }}/spike.log
+          retention-days: 30
