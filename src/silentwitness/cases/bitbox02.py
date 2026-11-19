@@ -61,7 +61,7 @@ def bitbox02_cases() -> list[Case]:
             if kind == "wpkh":
                 sc.add_p2wpkh(paths["wpkh"][n], (100_000, 50_000)[n])
             else:
-                sc.add_p2tr(paths["tr"][n], (100_000, 50_000)[n])
+                sc.add_p2tr(paths["tr"][n], (100_000, 50_000)[n], non_witness=True)
         sc.pay_sp(RECIPIENT.scan, RECIPIENT.spend, 80_000)
         sc.pay_p2wpkh_change(CHANGE_P2WPKH, 69_000)
         return sc
