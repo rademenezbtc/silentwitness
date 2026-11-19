@@ -75,7 +75,7 @@ def judge_case(case: Case, result: Result) -> Judgement:
         if result.outcome is Outcome.REFUSED:
             return Judgement(case.id, Verdict.PASS, [result.reason])
         notes = ["accepted a PSBT it must refuse"]
-        if result.returned_psbt:
+        if result.returned_psbt and case.meta.get("reference_validator", True):
             ok, msg = reference_validate(result.returned_psbt)
             notes.append(
                 "returned PSBT passes the BIP 375 reference validator"

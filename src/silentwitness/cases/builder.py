@@ -131,7 +131,7 @@ class Scenario:
         pr.put(self.inputs[idx].entries, pr.PSBT_IN_SP_ECDH_SHARE, share, key_data=scan)
         pr.put(self.inputs[idx].entries, pr.PSBT_IN_SP_DLEQ, proof, key_data=scan)
 
-    def add_p2tr(self, path: str, amount: int) -> int:
+    def add_p2tr(self, path: str, amount: int, non_witness: bool = False) -> int:
         w = self.user.wallet
         priv = w.priv(path)
         internal = xonly(point(priv))
@@ -139,6 +139,8 @@ class Scenario:
         spk = p2tr_script(xonly(q))
         tx = self._funding(amount, spk)
         e: list[pr.Entry] = []
+        if non_witness:  # the BitBox02 wants the previous transaction of every input
+            pr.put(e, pr.PSBT_IN_NON_WITNESS_UTXO, tx.serialize())
         pr.put(e, pr.PSBT_IN_WITNESS_UTXO, TxOut(amount, spk).serialize())
         pr.put(
             e, pr.PSBT_IN_TAP_BIP32_DERIVATION, ser_compact(0) + w.origin(path), key_data=internal
