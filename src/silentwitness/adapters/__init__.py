@@ -26,7 +26,14 @@ def _rust_psbt() -> Adapter:
     return RustPsbt()
 
 
+def _bitbox02() -> Adapter:
+    from .bitbox02 import BitBox02
+
+    return BitBox02()
+
+
 ADAPTERS: dict[str, Callable[[], Adapter]] = {
+    "bitbox02": _bitbox02,
     "embit": _embit,
     "krux": _krux,
     "rust-psbt": _rust_psbt,

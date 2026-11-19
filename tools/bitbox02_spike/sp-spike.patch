@@ -12,7 +12,7 @@ index 5d6ba52..e9798cf 100644
  tiny-keccak = { version = "2.0", features = ["keccak"] }
  rlp = "0.6"
 diff --git a/src/btc.rs b/src/btc.rs
-index 8280d43..46ba3ee 100644
+index 8280d43..b8de5e3 100644
 --- a/src/btc.rs
 +++ b/src/btc.rs
 @@ -204,6 +204,15 @@ impl TryFrom<&bitcoin::TxOut> for TxExternalOutput {
@@ -110,13 +110,19 @@ index 8280d43..46ba3ee 100644
      }
  
      /// Sign a PSBT.
-@@ -1050,6 +1083,21 @@ impl<R: Runtime> PairedBitBox<R> {
+@@ -1050,6 +1083,27 @@ impl<R: Runtime> PairedBitBox<R> {
          force_script_config: Option<pb::BtcScriptConfigWithKeypath>,
          format_unit: pb::btc_sign_init_request::FormatUnit,
      ) -> Result<(), Error> {
-+        self.btc_sign_psbt_sp(coin, psbt, force_script_config, format_unit, &Default::default())
-+            .await
-+            .map(|_| ())
++        self.btc_sign_psbt_sp(
++            coin,
++            psbt,
++            force_script_config,
++            format_unit,
++            &Default::default(),
++        )
++        .await
++        .map(|_| ())
 +    }
 +
 +    /// Like `btc_sign_psbt`, but outputs in `sp_outputs` (index -> silent-payment address) are
@@ -132,7 +138,7 @@ index 8280d43..46ba3ee 100644
          let _api_call = self.begin_api_call().await;
          // since v9.15.0, the BitBox02 accepts "internal" outputs (ones sent to the BitBox02 with
          // the keypath) even if the keypath is not a change keypath. PSBTs often contain the key
-@@ -1057,16 +1105,35 @@ impl<R: Runtime> PairedBitBox<R> {
+@@ -1057,16 +1111,37 @@ impl<R: Runtime> PairedBitBox<R> {
          self.validate_version(">=9.15.0")?;
  
          let our_root_fingerprint = self.root_fingerprint_inner().await?;
@@ -141,7 +147,9 @@ index 8280d43..46ba3ee 100644
 +        let mut psbt_for_conversion = psbt.clone();
 +        for idx in sp_outputs.keys() {
 +            psbt_for_conversion.unsigned_tx.output[*idx].script_pubkey =
-+                bitcoin::ScriptBuf::new_p2wpkh(&<bitcoin::WPubkeyHash as bitcoin::hashes::Hash>::all_zeros());
++                bitcoin::ScriptBuf::new_p2wpkh(
++                    &<bitcoin::WPubkeyHash as bitcoin::hashes::Hash>::all_zeros(),
++                );
 +        }
          let psbt_transaction = Transaction::from_psbt(
              self.version(),
@@ -171,7 +179,7 @@ index 8280d43..46ba3ee 100644
                  &psbt_transaction.output_script_configs,
                  &psbt_transaction.output_script_config_indices,
                  format_unit,
-@@ -1103,7 +1170,7 @@ impl<R: Runtime> PairedBitBox<R> {
+@@ -1103,7 +1178,7 @@ impl<R: Runtime> PairedBitBox<R> {
                  }
              }
          }
@@ -182,10 +190,10 @@ index 8280d43..46ba3ee 100644
      /// Sign a message.
 diff --git a/tests/spike_sp.rs b/tests/spike_sp.rs
 new file mode 100644
-index 0000000..353bdae
+index 0000000..764f4ea
 --- /dev/null
 +++ b/tests/spike_sp.rs
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,52 @@
 +#![cfg(feature = "simulator")]
 +mod util;
 +use bitbox_api::pb;
@@ -226,7 +234,11 @@ index 0000000..353bdae
 +            "SPIKE result: {:?}",
 +            r.as_ref().map(|g| g
 +                .iter()
-+                .map(|o| (o.output_index, hex::encode(&o.pkscript), hex::encode(&o.dleq_proof)))
++                .map(|o| (
++                    o.output_index,
++                    hex::encode(&o.pkscript),
++                    hex::encode(&o.dleq_proof)
++                ))
 +                .collect::<Vec<_>>())
 +        );
 +        std::thread::sleep(std::time::Duration::from_millis(1500));

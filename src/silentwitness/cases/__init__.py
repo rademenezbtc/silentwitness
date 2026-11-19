@@ -8,6 +8,7 @@ from functools import cache
 from ..model import Case
 from .attacks import attack_cases
 from .baseline import bip375_cases
+from .bitbox02 import bitbox02_cases
 from .ext375 import ext375_cases
 
 
@@ -22,6 +23,8 @@ SUITES: dict[str, Callable[[], list[Case]]] = {
     # Extended vectors from rust-psbt PR #425: not an official BIP version, so not in "all".
     "ext375": ext375_cases,
     "all-ext375": lambda: _all() + ext375_cases(),
+    # Keyed to the BitBox02 simulator's fixed seed, so only the bitbox02 adapter can sign them.
+    "bitbox02": bitbox02_cases,
 }
 
 

@@ -1,0 +1,75 @@
+name: bitbox02
+
+# Runs the bitbox02 suite against the official BitBox02 firmware simulator, through bitbox-api-rs.
+# bitbox-api-rs cannot send silent-payment outputs yet, so tools/bitbox02_spike/sp-spike.patch is
+# applied at a pinned commit and the harness (tools/bitbox02_harness) is built inside it.
+#
+# Third-party code (bitbox-api-rs, the firmware simulator) runs only here, never on a developer
+# machine: pinned commit, simulator verified by sha256, read-only permissions, no secrets.
+# Only the simulator versions that carry the silent-payment fix run here. Released firmware in the
+# affected range (9.21.0 to 9.26.4) stays private until the disclosure policy allows.
+
+on:
+  push:
+    branches: [bitbox02-adapter]
+  pull_request:
+    paths:
+      - ".github/workflows/bitbox02.yml"
+      - "tools/bitbox02_harness/**"
+      - "tools/bitbox02_spike/**"
+      - "src/silentwitness/adapters/bitbox02.py"
+      - "src/silentwitness/cases/bitbox02.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bitbox02-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bitbox02:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BITBOX_API_COMMIT: 0663f047bdbe821ef2bbcda58620b8e828f961df
+      SIM_VERSION: v9.27.1
+      SIM_SHA256: 0b049efb21dcf8a447e9f46c660c731e38fb83101023d4f80f1f423ddaa4126b
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: rustup toolchain install stable --profile minimal
+      - name: Fetch bitbox-api-rs at the pinned commit and apply the silent-payment patch
+        run: |
+          git clone https://github.com/BitBoxSwiss/bitbox-api-rs.git "$RUNNER_TEMP/bitbox-api-rs"
+          git -C "$RUNNER_TEMP/bitbox-api-rs" checkout "$BITBOX_API_COMMIT"
+          git -C "$RUNNER_TEMP/bitbox-api-rs" apply --verbose "$GITHUB_WORKSPACE/tools/bitbox02_spike/sp-spike.patch"
+      - name: Build the harness
+        working-directory: ${{ runner.temp }}/bitbox-api-rs
+        run: |
+          cp "$GITHUB_WORKSPACE/tools/bitbox02_harness/harness.rs" examples/sw_harness.rs
+          cargo +stable build --release --features simulator,tokio --example sw_harness
+      - name: Fetch the firmware simulator and verify its checksum
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/sim.bin" \
+            "https://github.com/BitBoxSwiss/bitbox02-firmware/releases/download/firmware%2F${SIM_VERSION}/bitbox02-multi-${SIM_VERSION}-simulator1.0.0-linux-amd64"
+          echo "$SIM_SHA256  $RUNNER_TEMP/sim.bin" | sha256sum -c
+          chmod +x "$RUNNER_TEMP/sim.bin"
+          # The adapter reads the firmware version from the file name.
+          mv "$RUNNER_TEMP/sim.bin" "$RUNNER_TEMP/bitbox02-multi-${SIM_VERSION}-simulator"
+      - name: Run the bitbox02 suite against the simulator
+        env:
+          SW_BITBOX02_SIMULATOR: ${{ runner.temp }}/bitbox02-multi-${{ env.SIM_VERSION }}-simulator
+        run: |
+          export SW_BITBOX02_HARNESS="$RUNNER_TEMP/bitbox-api-rs/target/release/examples/sw_harness"
+          silentwitness run --adapter bitbox02 --suite bitbox02 --out evidence/bitbox02 --note "CI ${{ github.sha }}"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitbox02-evidence
+          path: evidence/bitbox02
+          retention-days: 90
