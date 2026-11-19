@@ -1,6 +1,6 @@
 name: scorecard
 
-# Runs every suite against every adapter that works in CI (embit, Krux), builds the
+# Runs every suite against every adapter that works in CI (embit, Krux, rust-psbt), builds the
 # scorecard page and publishes it to GitHub Pages. Only unreleased signer code runs
 # here; released-firmware cases stay private until the disclosure policy allows.
 
@@ -51,8 +51,31 @@ jobs:
           path: evidence/krux
           retention-days: 90
 
+  # rust-psbt (crate psbt-v2, PR #425) is third-party code too: same rules as Krux. The crate
+  # commit is pinned in tools/rust_psbt_harness/Cargo.toml and Cargo.lock; bump both to test a
+  # newer one. Only its evidence leaves the job.
+  rust-psbt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: rustup toolchain install stable --profile minimal
+      - name: Build the harness at the pinned crate commit
+        run: cargo +stable build --release --locked --manifest-path tools/rust_psbt_harness/Cargo.toml
+      - name: Run all suites, and the extended vectors from its own PR, against rust-psbt
+        run: silentwitness run --adapter rust-psbt --suite all-ext375 --out evidence/rust-psbt --note "CI ${{ github.sha }}" || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-psbt-evidence
+          path: evidence/rust-psbt
+          retention-days: 90
+
   build:
-    needs: krux
+    needs: [krux, rust-psbt]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -67,6 +90,10 @@ jobs:
         with:
           name: krux-evidence
           path: evidence/krux
+      - uses: actions/download-artifact@v4
+        with:
+          name: rust-psbt-evidence
+          path: evidence/rust-psbt
       - name: Build scorecard
         run: silentwitness report --evidence evidence --out site
       - uses: actions/upload-artifact@v4

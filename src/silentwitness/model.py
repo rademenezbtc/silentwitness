@@ -54,6 +54,10 @@ class Case:
     control: str | None = None  # id of the paired valid case (see judge)
     input_keys: dict[int, str] = field(default_factory=dict)  # input index -> privkey hex
     expected_scripts: dict[int, str] = field(default_factory=dict)  # output index -> spk hex
+    # input index -> scan key hex -> (ECDH share hex, DLEQ proof hex), for the inputs the
+    # signer owns. A signer that computes its own shares ignores this; an adapter for a
+    # library that only checks and signs (rust-psbt) adds them to the PSBT first.
+    sp_shares: dict[int, dict[str, tuple[str, str]]] = field(default_factory=dict)
     expected_display: tuple[str, ...] = ()
     seed: str | None = None  # public test mnemonic the signer holds (None: keys in input_keys)
     signed_inputs: tuple[int, ...] = ()  # inputs a correct signer signs; the judge verifies them

@@ -1,0 +1,12 @@
+[package]
+name = "rust-psbt-harness"
+version = "0.0.1"
+edition = "2021"
+publish = false
+description = "Feeds one SilentWitness case to rust-psbt's Signer and reports what it did, as JSON"
+
+[dependencies]
+# Pinned to a commit: the BIP-375 Signer rules are unmerged (rust-bitcoin/rust-psbt PR #425).
+psbt-v2 = { git = "https://git.rust-bitcoin.org/macgyver/rust-psbt.git", rev = "eb4ccb24d85b4b24f75e9cf18d277487b8721fc5", features = ["std", "base64", "silent-payments"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

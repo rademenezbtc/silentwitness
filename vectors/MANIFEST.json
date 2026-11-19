@@ -28,6 +28,15 @@
       "upstream_path": "bip-0375/bip375_test_vectors.json",
       "sha256": "83d6a86cf496c5f3246f34dc932c839b4f7ef0774b125a3db54c39efa9db16b1",
       "version": "1.1.1"
+    },
+    "ext375": {
+      "path": "ext375/rust-psbt-pr425-bip375.json",
+      "external": true,
+      "upstream": "https://git.rust-bitcoin.org/macgyver/rust-psbt.git",
+      "upstream_commit": "eb4ccb24d85b4b24f75e9cf18d277487b8721fc5",
+      "upstream_path": "tests/data/bip375.json",
+      "sha256": "e2b30316183bfc4514b705ff8e5f51caf6389738a2efa23ccc7fd9bff235f870",
+      "note": "rust-psbt PR #425 test data, synced with an extended BIP-375 generator. Not an official BIP-375 version (bitcoin/bips has 1.1.1)."
     }
   }
 }

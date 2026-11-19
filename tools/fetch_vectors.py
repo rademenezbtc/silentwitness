@@ -58,6 +58,9 @@ def main() -> None:
             entry["version"] = json.loads(data)["version"]
         files[name] = entry
         print(f"{name}: {local} ({len(data)} bytes)")
+    # Entries marked "external" come from another repository and are not touched here.
+    old = json.loads((root / "MANIFEST.json").read_text())["files"]
+    files.update({k: v for k, v in old.items() if v.get("external")})
     manifest = {
         "upstream": "https://github.com/bitcoin/bips",
         "commit": commit,

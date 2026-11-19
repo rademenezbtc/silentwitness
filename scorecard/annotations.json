@@ -30,5 +30,23 @@
     "S9d-TR": "Krux signs and derives outputs that include its own input even though the host marked it as NUMS. The BIP 375 reference validator is not applied to this case, because the returned PSBT keeps the host's NUMS marking.",
     "P5-TR": "An SP-received input and an ordinary taproot input together: Krux signs and the outputs are right.",
     "S9c3": "Krux refuses, which is the required outcome, but with 'Unable to get policy': it could not classify the input, not because it recognised segwit v2. The pass does not show an explicit segwit v2 check."
+  },
+  "rust-psbt": {
+    "CTRL-SEND": "rust-psbt checks and signs; it does not compute silent-payment data. For this target the adapter plays the caller: it adds the signer's own ECDH shares and DLEQ proofs and hands the crate the output scripts derived with SilentWitness's own BIP 352 code. A pass here means the crate's Signer rules accept a correct PSBT, not that the crate derives anything itself.",
+    "S4": "Refused with ScriptMismatch, but only because the adapter supplied the correctly derived script and the crate compared it with the host's. rust-psbt does not derive scripts, so a caller that skips that step would sign the host's script. The result tests the crate together with the adapter's caller step.",
+    "S6b": "Same as S4: the crate refuses the swapped scripts only because the correctly derived ones were supplied for comparison.",
+    "S3b": "Refused on the crate's own funding-UTXO rule (witness and non-witness UTXO disagree). The adapter's caller step runs first, so the error is reported by the commit step, not by the signing session.",
+    "S9d": "The host marked one of the signer's own taproot inputs as NUMS and the crate refuses with TaprootInternalKeyMismatch (the claimed internal key does not produce the prevout). The case allows a refusal.",
+    "S9d-TR": "Same as S9d.",
+    "S6a": "Skipped: a refusal here would only show that the output scripts were never derived. The crate has no BIP 352 code, and this case has too many outputs to derive them in the suite.",
+    "CTRL-KMAX": "Skipped for the same reason as S6a.",
+    "CTRL-MULTI": "Skipped: the adapter holds one signer's keys and cannot produce another party's ECDH shares. The multi-party cases (S5a, S5b, S8, S9c1, S9c1-TR) are skipped for the same reason.",
+    "CTRL-SPEND": "Skipped: rust-psbt has no BIP 376 support, so it cannot spend silent-payment inputs. The spending cases (P1-P5, P5-TR) are skipped for the same reason.",
+    "CTRL-CHANGE": "Signed correctly. The crate has no concept of change detection, so change handling cannot be judged here.",
+    "BIP375-V02": "Skipped: this v1.1.1 vector uses a placeholder prevout script that no key hashes to. rust-psbt checks the input key against the prevout and refuses, correctly. The crate's own regenerated v1.2.0 vectors fix the prevouts; the other skipped valid vectors are the same.",
+    "D1": "Skipped: the crate has no screen. Display cases need a device.",
+    "EXT375-I17": "Skipped: the crate signed, but this case is about a DLEQ proof, which rust-psbt leaves to its caller by design (its own test for this vector is ignored). The BIP 375 reference code refuses the returned PSBT, so the check works at the caller level. The same applies to I20, I47 and I48 (derived scripts).",
+    "EXT375-I10": "Skipped: refused only because no output script was ever derived; the crate does not derive them. The same applies to I18.",
+    "EXT375-V03": "Skipped: the vector gives a P2WPKH input with only a witness UTXO. rust-psbt's strict signer refuses to sign it without the previous transaction (BIP 174). The crate's own tests sign this vector with the checks switched off."
   }
 }
