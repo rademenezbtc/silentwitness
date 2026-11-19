@@ -36,6 +36,8 @@ def load_runs(evidence: Path) -> list[dict]:
 
 
 def _group(case: dict) -> str:
+    if case["source"].startswith("ext375"):
+        return f"Extended BIP 375 vectors (unofficial): {case['title'].split(':', 1)[0]}"
     if case["source"].startswith("bip375"):
         version = case["source"].split("-v", 1)[-1]
         return f"BIP 375 vectors v{version}: {case['title'].split(':', 1)[0]}"
@@ -74,6 +76,12 @@ def _date(iso: str) -> str:
 
 
 def _strip_group(c: dict) -> str:
+    if c["source"].startswith("ext375"):
+        return (
+            "Extended vectors to refuse (unofficial)"
+            if c["expect"] == "must_refuse"
+            else "Extended vectors to sign (unofficial)"
+        )
     if c["source"].startswith("bip375"):
         return (
             "BIP 375 vectors to refuse"
@@ -532,8 +540,8 @@ def render(runs: list[dict], annotations: dict, repo: str) -> str:
 </header>
 <section class="hero">
   <h1>What Bitcoin signers do with hostile silent-payment PSBTs</h1>
-  <p class="lede">We send each signer {total_cases} PSBTs: the official BIP 375 test vectors and
-  attacks a malicious wallet could try. Each cell below is one PSBT. An independent judge decides
+  <p class="lede">We send each signer up to {total_cases} PSBTs: the official BIP 375 test vectors,
+  attacks a malicious wallet could try and, for some signers, extra vectors marked unofficial. Each cell below is one PSBT. An independent judge decides
   whether the signer did the right thing, and every result links to the exact PSBT sent and returned.</p>
 </section>
 {_overview(runs)}

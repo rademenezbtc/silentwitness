@@ -8,6 +8,7 @@ from functools import cache
 from ..model import Case
 from .attacks import attack_cases
 from .baseline import bip375_cases
+from .ext375 import ext375_cases
 
 
 def _all() -> list[Case]:
@@ -18,6 +19,9 @@ SUITES: dict[str, Callable[[], list[Case]]] = {
     "bip375": bip375_cases,
     "attacks": attack_cases,
     "all": _all,
+    # Extended vectors from rust-psbt PR #425: not an official BIP version, so not in "all".
+    "ext375": ext375_cases,
+    "all-ext375": lambda: _all() + ext375_cases(),
 }
 
 

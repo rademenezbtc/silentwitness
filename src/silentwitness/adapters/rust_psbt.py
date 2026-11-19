@@ -40,6 +40,9 @@ TIMEOUT_S = 30.0
 # PR's own regenerated vectors (v1.2.0) fix the prevouts; until those are imported, skip.
 SCRIPTS_MISSING_ERRORS = ("SilentPaymentIncomplete", "MissingScript")
 
+# The two BIP 375 checks the crate leaves to its caller: DLEQ proofs and derived scripts.
+CALLER_CHECKS = ("ecdh_coverage", "output_scripts")
+
 PLACEHOLDER_PREVOUT_ERRORS = (
     "MissingInputPublicKey",
     "TaprootInternalKeyMismatch",
@@ -181,15 +184,27 @@ class RustPsbt(Adapter):
         if (
             outcome is Outcome.REFUSED
             and case.expect is Expect.SIGN
-            and case.source.startswith("bip375")
+            and case.source.startswith(("bip375", "ext375"))
             and any(e in reason for e in PLACEHOLDER_PREVOUT_ERRORS)
         ):
             return Result(
                 case.id,
                 Outcome.SKIPPED,
-                reason=f"vector prevouts are placeholders the crate rightly rejects ({reason})",
+                reason=f"the crate rejects the vector's prevout data, which it checks ({reason})",
                 duration_s=took,
             )
+        if outcome is Outcome.SIGNED and case.expect is Expect.REFUSE and resp.get("psbt"):
+            from ..reference import validate as reference_validate
+
+            ok, msg = reference_validate(resp["psbt"], CALLER_CHECKS)
+            if not ok:
+                return Result(
+                    case.id,
+                    Outcome.SKIPPED,
+                    reason="the crate signed, but verifying DLEQ proofs and deriving scripts is "
+                    f"left to its caller by design (BIP 375 reference code says: {msg})",
+                    duration_s=took,
+                )
         return Result(
             case.id,
             outcome,

@@ -161,3 +161,12 @@ def test_describe_records_the_pinned_crate_commit(tmp_path):
     assert info["adapter"] == "rust-psbt"
     assert len(info["commit"]) == 40
     assert "rust-psbt" in info["source"]
+
+
+def test_a_signed_case_the_crate_leaves_to_its_caller_is_a_skip(tmp_path):
+    # EXT375-I17 has a bad DLEQ proof. rust-psbt does not verify proofs, so a harness that
+    # signs it is behaving as designed; the reference code (the caller step) refuses it.
+    case = next(c for c in get_suite("ext375") if c.id == "EXT375-I17")
+    r = RustPsbt(_stub(tmp_path, _answer("signed", psbt=case.psbt))).run(case)
+    assert r.outcome is Outcome.SKIPPED
+    assert "left to its caller" in r.reason

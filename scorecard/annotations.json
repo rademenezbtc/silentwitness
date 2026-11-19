@@ -44,6 +44,9 @@
     "CTRL-SPEND": "Skipped: rust-psbt has no BIP 376 support, so it cannot spend silent-payment inputs. The spending cases (P1-P5, P5-TR) are skipped for the same reason.",
     "CTRL-CHANGE": "Signed correctly. The crate has no concept of change detection, so change handling cannot be judged here.",
     "BIP375-V02": "Skipped: this v1.1.1 vector uses a placeholder prevout script that no key hashes to. rust-psbt checks the input key against the prevout and refuses, correctly. The crate's own regenerated v1.2.0 vectors fix the prevouts; the other skipped valid vectors are the same.",
-    "D1": "Skipped: the crate has no screen. Display cases need a device."
+    "D1": "Skipped: the crate has no screen. Display cases need a device.",
+    "EXT375-I17": "Skipped: the crate signed, but this case is about a DLEQ proof, which rust-psbt leaves to its caller by design (its own test for this vector is ignored). The BIP 375 reference code refuses the returned PSBT, so the check works at the caller level. The same applies to I20, I47 and I48 (derived scripts).",
+    "EXT375-I10": "Skipped: refused only because no output script was ever derived; the crate does not derive them. The same applies to I18.",
+    "EXT375-V03": "Skipped: the vector gives a P2WPKH input with only a witness UTXO. rust-psbt's strict signer refuses to sign it without the previous transaction (BIP 174). The crate's own tests sign this vector with the checks switched off."
   }
 }
