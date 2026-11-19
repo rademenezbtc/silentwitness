@@ -110,6 +110,9 @@ jobs:
         run: |
           silentwitness run --adapter bitbox02 --suite bitbox02 \
             --out "evidence/bitbox02-${{ matrix.version }}" --note "CI ${{ github.sha }}"
+      - name: Show the verdicts
+        if: always()
+        run: cat evidence/bitbox02-${{ matrix.version }}/*/summary.md
       - if: always()
         uses: actions/upload-artifact@v4
         with:

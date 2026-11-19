@@ -224,3 +224,5 @@ def test_s2_signed_by_the_device_is_a_failure(tmp_path):
     results = {case.id: adapter.run(case), control.id: adapter.run(control)}
     judgements = judge_run([case, control], results)
     assert judgements[case.id].verdict is Verdict.FAIL
+    # The BIP 375 reference validator does not apply to a device that never receives shares.
+    assert not any("reference validator" in n for n in judgements[case.id].notes)
