@@ -19,6 +19,7 @@ from silentwitness.tx import Tx
 
 SIM_NAME = "bitbox02-multi-v9.27.1-simulator1.0.0-linux-amd64"
 CASES = {c.id: c for c in get_suite("bitbox02")}
+CONTROLS = {i: c for i, c in CASES.items() if i.startswith("BB-CTRL")}
 SEND = CASES["BB-CTRL-SEND"]
 
 
@@ -51,14 +52,15 @@ def test_registered_and_unavailable_without_binaries(monkeypatch):
 
 
 def test_suite_is_keyed_to_the_simulator_seed():
-    assert set(CASES) == {"BB-CTRL-SEND", "BB-CTRL-TR", "BB-CTRL-MIXED"}
+    assert set(CASES) == {"BB-CTRL-SEND", "BB-CTRL-TR", "BB-CTRL-MIXED", "BB-S2"}
     for case in CASES.values():
         assert case.seed == mod.SIM_MNEMONIC
         assert case.meta["reference_validator"] is False
+    for case in CONTROLS.values():
         assert case.expected_scripts and case.signed_inputs
 
 
-@pytest.mark.parametrize("case", CASES.values(), ids=lambda c: c.id)
+@pytest.mark.parametrize("case", CONTROLS.values(), ids=lambda c: c.id)
 def test_unsigned_transaction_matches_the_case(case):
     raw = pr.parse(case.psbt)
     tx = Tx.parse(mod.unsigned_tx(raw))
@@ -194,3 +196,31 @@ def test_cases_for_other_seeds_are_skipped_without_running_anything(tmp_path):
     assert "different seed" in result.reason
     for case in get_suite("attacks"):
         assert adapter.run(case).outcome is Outcome.SKIPPED
+
+
+def test_s2_sends_an_own_output_that_carries_the_hosts_address():
+    case = CASES["BB-S2"]
+    raw = pr.parse(case.psbt)
+    # The output is the user's own: it has a script and a derivation. It also has the host's SP
+    # info, which the adapter turns into an sp1 address.
+    assert pr.get(raw.outputs[0], pr.PSBT_OUT_SCRIPT)
+    assert pr.get_all(raw.outputs[0], pr.PSBT_OUT_BIP32_DERIVATION)
+    host_address = mod.sp_outputs(raw)[0]
+    assert host_address != mod.sp_outputs(pr.parse(SEND.psbt))[0]
+    # The v0 form keeps the script (so the library sees an own output) and the derivation.
+    tx = Tx.parse(mod.unsigned_tx(raw))
+    assert tx.vout[0].script == pr.get(raw.outputs[0], pr.PSBT_OUT_SCRIPT)
+    assert case.control == "BB-CTRL-SEND"
+
+
+def test_s2_signed_by_the_device_is_a_failure(tmp_path):
+    from silentwitness.judge import judge_run
+    from silentwitness.model import Verdict
+
+    case, control = CASES["BB-S2"], SEND
+    script = control.expected_scripts[0]
+    signed = {"outcome": "signed", "inputs": [], "generated": [{"index": 0, "pkscript": script}]}
+    adapter = _adapter(tmp_path, _answer(signed))
+    results = {case.id: adapter.run(case), control.id: adapter.run(control)}
+    judgements = judge_run([case, control], results)
+    assert judgements[case.id].verdict is Verdict.FAIL

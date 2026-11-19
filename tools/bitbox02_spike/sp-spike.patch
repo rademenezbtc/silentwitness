@@ -12,14 +12,23 @@ index 5d6ba52..e9798cf 100644
  tiny-keccak = { version = "2.0", features = ["keccak"] }
  rlp = "0.6"
 diff --git a/src/btc.rs b/src/btc.rs
-index 8280d43..b8de5e3 100644
+index 8280d43..31074dc 100644
 --- a/src/btc.rs
 +++ b/src/btc.rs
-@@ -204,6 +204,15 @@ impl TryFrom<&bitcoin::TxOut> for TxExternalOutput {
+@@ -204,6 +204,24 @@ impl TryFrom<&bitcoin::TxOut> for TxExternalOutput {
  pub enum TxOutput {
      Internal(TxInternalOutput),
      External(TxExternalOutput),
-+    SilentPayment { address: String, value: u64 },
++    SilentPayment {
++        address: String,
++        value: u64,
++    },
++    /// An output the device is told is its own (keypath) AND that carries a silent-payment
++    /// address. A correct device refuses it; this exists to test that it does.
++    InternalSilentPayment {
++        output: TxInternalOutput,
++        address: String,
++    },
 +}
 +
 +/// Output script and DLEQ proof the device generated for a silent-payment output.
@@ -31,7 +40,7 @@ index 8280d43..b8de5e3 100644
  }
  
  #[derive(Debug, PartialEq)]
-@@ -824,6 +833,7 @@ impl<R: Runtime> PairedBitBox<R> {
+@@ -824,6 +842,7 @@ impl<R: Runtime> PairedBitBox<R> {
          let _api_call = self.begin_api_call().await;
          self.btc_sign_inner(coin, transaction, &[], &[], format_unit)
              .await
@@ -39,7 +48,7 @@ index 8280d43..b8de5e3 100644
      }
  
      async fn btc_sign_inner(
-@@ -833,7 +843,7 @@ impl<R: Runtime> PairedBitBox<R> {
+@@ -833,7 +852,7 @@ impl<R: Runtime> PairedBitBox<R> {
          output_script_configs: &[pb::BtcScriptConfigWithKeypath],
          output_script_config_indices: &[Option<u32>],
          format_unit: pb::btc_sign_init_request::FormatUnit,
@@ -48,7 +57,7 @@ index 8280d43..b8de5e3 100644
          if !output_script_config_indices.is_empty()
              && output_script_config_indices.len() != transaction.outputs.len()
          {
-@@ -861,6 +871,8 @@ impl<R: Runtime> PairedBitBox<R> {
+@@ -861,6 +880,8 @@ impl<R: Runtime> PairedBitBox<R> {
          }
  
          let mut sigs: Vec<Vec<u8>> = Vec::new();
@@ -57,22 +66,38 @@ index 8280d43..b8de5e3 100644
  
          let mut next_response = self
              .get_next_response(Request::BtcSignInit(pb::BtcSignInitRequest {
-@@ -872,7 +884,10 @@ impl<R: Runtime> PairedBitBox<R> {
+@@ -872,7 +893,12 @@ impl<R: Runtime> PairedBitBox<R> {
                  num_outputs: transaction.outputs.len() as _,
                  locktime: transaction.locktime,
                  format_unit: format_unit as _,
 -                contains_silent_payment_outputs: false,
-+                contains_silent_payment_outputs: transaction
-+                    .outputs
-+                    .iter()
-+                    .any(|o| matches!(o, TxOutput::SilentPayment { .. })),
++                contains_silent_payment_outputs: transaction.outputs.iter().any(|o| {
++                    matches!(
++                        o,
++                        TxOutput::SilentPayment { .. } | TxOutput::InternalSilentPayment { .. }
++                    )
++                }),
              }))
              .await?;
  
-@@ -1013,6 +1028,17 @@ impl<R: Runtime> PairedBitBox<R> {
+@@ -1013,6 +1039,31 @@ impl<R: Runtime> PairedBitBox<R> {
                                  ..Default::default()
                              })
                          }
++                        TxOutput::InternalSilentPayment { output, address } => {
++                            pending_sp_output = Some(output_index as u32);
++                            Request::BtcSignOutput(pb::BtcSignOutputRequest {
++                                ours: true,
++                                value: output.value,
++                                keypath: output.keypath.to_vec(),
++                                script_config_index: output.script_config_index,
++                                output_script_config_index,
++                                silent_payment: Some(pb::btc_sign_output_request::SilentPayment {
++                                    address: address.clone(),
++                                }),
++                                ..Default::default()
++                            })
++                        }
 +                        TxOutput::SilentPayment { address, value } => {
 +                            pending_sp_output = Some(output_index as u32);
 +                            Request::BtcSignOutput(pb::BtcSignOutputRequest {
@@ -87,7 +112,7 @@ index 8280d43..b8de5e3 100644
                          TxOutput::External(output) => {
                              Request::BtcSignOutput(pb::BtcSignOutputRequest {
                                  ours: false,
-@@ -1024,6 +1050,13 @@ impl<R: Runtime> PairedBitBox<R> {
+@@ -1024,6 +1075,13 @@ impl<R: Runtime> PairedBitBox<R> {
                          }
                      };
                      next_response = self.get_next_response(request).await?;
@@ -101,7 +126,7 @@ index 8280d43..b8de5e3 100644
                  }
                  pb::btc_sign_next_response::Type::Done => break,
                  pb::btc_sign_next_response::Type::HostNonce => {
-@@ -1032,7 +1065,7 @@ impl<R: Runtime> PairedBitBox<R> {
+@@ -1032,7 +1090,7 @@ impl<R: Runtime> PairedBitBox<R> {
                  _ => return Err(Error::UnexpectedResponse),
              }
          }
@@ -110,7 +135,7 @@ index 8280d43..b8de5e3 100644
      }
  
      /// Sign a PSBT.
-@@ -1050,6 +1083,27 @@ impl<R: Runtime> PairedBitBox<R> {
+@@ -1050,6 +1108,27 @@ impl<R: Runtime> PairedBitBox<R> {
          force_script_config: Option<pb::BtcScriptConfigWithKeypath>,
          format_unit: pb::btc_sign_init_request::FormatUnit,
      ) -> Result<(), Error> {
@@ -138,7 +163,7 @@ index 8280d43..b8de5e3 100644
          let _api_call = self.begin_api_call().await;
          // since v9.15.0, the BitBox02 accepts "internal" outputs (ones sent to the BitBox02 with
          // the keypath) even if the keypath is not a change keypath. PSBTs often contain the key
-@@ -1057,16 +1111,37 @@ impl<R: Runtime> PairedBitBox<R> {
+@@ -1057,16 +1136,55 @@ impl<R: Runtime> PairedBitBox<R> {
          self.validate_version(">=9.15.0")?;
  
          let our_root_fingerprint = self.root_fingerprint_inner().await?;
@@ -146,10 +171,14 @@ index 8280d43..b8de5e3 100644
 +        // outputs a placeholder before the PSBT is converted. The placeholder is never sent.
 +        let mut psbt_for_conversion = psbt.clone();
 +        for idx in sp_outputs.keys() {
-+            psbt_for_conversion.unsigned_tx.output[*idx].script_pubkey =
-+                bitcoin::ScriptBuf::new_p2wpkh(
++            let output = &mut psbt_for_conversion.unsigned_tx.output[*idx];
++            // An output that already has a script is sent as it is: if the PSBT also marks it
++            // as the device's own, it goes out as an own output carrying an sp1 address.
++            if output.script_pubkey.is_empty() {
++                output.script_pubkey = bitcoin::ScriptBuf::new_p2wpkh(
 +                    &<bitcoin::WPubkeyHash as bitcoin::hashes::Hash>::all_zeros(),
 +                );
++            }
 +        }
          let psbt_transaction = Transaction::from_psbt(
              self.version(),
@@ -161,14 +190,28 @@ index 8280d43..b8de5e3 100644
 -        let signatures = self
 +        let mut transaction = psbt_transaction.transaction;
 +        for (idx, address) in sp_outputs {
-+            let value = match &transaction.outputs[*idx] {
-+                TxOutput::External(o) => o.value,
-+                TxOutput::Internal(o) => o.value,
-+                TxOutput::SilentPayment { value, .. } => *value,
-+            };
-+            transaction.outputs[*idx] = TxOutput::SilentPayment {
-+                address: address.clone(),
-+                value,
++            let taken = std::mem::replace(
++                &mut transaction.outputs[*idx],
++                TxOutput::SilentPayment {
++                    address: String::new(),
++                    value: 0,
++                },
++            );
++            transaction.outputs[*idx] = match taken {
++                TxOutput::Internal(output) | TxOutput::InternalSilentPayment { output, .. } => {
++                    TxOutput::InternalSilentPayment {
++                        output,
++                        address: address.clone(),
++                    }
++                }
++                TxOutput::External(o) => TxOutput::SilentPayment {
++                    address: address.clone(),
++                    value: o.value,
++                },
++                TxOutput::SilentPayment { value, .. } => TxOutput::SilentPayment {
++                    address: address.clone(),
++                    value,
++                },
 +            };
 +        }
 +        let (signatures, generated) = self
@@ -179,7 +222,7 @@ index 8280d43..b8de5e3 100644
                  &psbt_transaction.output_script_configs,
                  &psbt_transaction.output_script_config_indices,
                  format_unit,
-@@ -1103,7 +1178,7 @@ impl<R: Runtime> PairedBitBox<R> {
+@@ -1103,7 +1221,7 @@ impl<R: Runtime> PairedBitBox<R> {
                  }
              }
          }
