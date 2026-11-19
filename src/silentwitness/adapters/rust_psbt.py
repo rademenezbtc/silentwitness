@@ -91,9 +91,7 @@ class RustPsbt(Adapter):
             for scan_hex, (share, proof) in by_scan.items():
                 scan = bytes.fromhex(scan_hex)
                 if pr.get(psbt.inputs[idx], pr.PSBT_IN_SP_ECDH_SHARE, scan) is None:
-                    pr.put(
-                        psbt.inputs[idx], pr.PSBT_IN_SP_ECDH_SHARE, bytes.fromhex(share), scan
-                    )
+                    pr.put(psbt.inputs[idx], pr.PSBT_IN_SP_ECDH_SHARE, bytes.fromhex(share), scan)
                 if pr.get(psbt.inputs[idx], pr.PSBT_IN_SP_DLEQ, scan) is None:
                     pr.put(psbt.inputs[idx], pr.PSBT_IN_SP_DLEQ, bytes.fromhex(proof), scan)
         return psbt.to_base64()
@@ -164,9 +162,7 @@ class RustPsbt(Adapter):
             resp = json.loads(proc.stdout)
             outcome = Outcome(resp["outcome"])
         except (json.JSONDecodeError, KeyError, ValueError):
-            return Result(
-                case.id, Outcome.CRASHED, reason="harness sent garbage", duration_s=took
-            )
+            return Result(case.id, Outcome.CRASHED, reason="harness sent garbage", duration_s=took)
         reason = resp.get("reason", "")
         if (
             outcome is Outcome.REFUSED

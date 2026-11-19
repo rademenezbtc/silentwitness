@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import cache
 
 from ..model import Case
 from .attacks import attack_cases
@@ -20,5 +21,12 @@ SUITES: dict[str, Callable[[], list[Case]]] = {
 }
 
 
+@cache
+def _built(name: str) -> tuple[Case, ...]:
+    # Building the attack cases computes DLEQ proofs, which takes seconds. Cases are frozen,
+    # so every caller can share one build.
+    return tuple(SUITES[name]())
+
+
 def get_suite(name: str) -> list[Case]:
-    return SUITES[name]()
+    return list(_built(name))
