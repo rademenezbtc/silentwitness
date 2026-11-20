@@ -14,7 +14,7 @@ and keeps the evidence.
 rebuilt from a fresh run on every push to `main`.
 
 > **Status: pre-alpha.** The BIP 375 baseline and the attack cases (S1–S9, P1–P5,
-> D1–D3) run against **embit**, **Krux**, **rust-psbt** and **BitBox02** (firmware simulators 9.21.0–9.27.1) in CI. The multi-party cases (S5, S8)
+> D1–D3) run against **embit**, **Krux**, **rust-psbt** and **BitBox02** (firmware simulators 9.26.5 and 9.27.1) in CI. The multi-party cases (S5, S8)
 > need a signer that supports other parties' inputs and are skipped on both. A
 > Coldcard simulator was tried and parked (see Targets); real devices and the
 > camera rig are next. Test keys and signet/regtest only.

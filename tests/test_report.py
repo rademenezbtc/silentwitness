@@ -158,15 +158,25 @@ def test_theme_switch_follows_the_system_and_remembers_the_choice():
 
 
 def test_bitbox02_firmware_versions_are_separate_signers(tmp_path):
-    for version in ("9.26.3", "9.9.1", "9.27.1"):
+    for version in ("9.26.5", "9.9.1", "9.27.1"):
         run = _run("2026-11-20T00:00:00+00:00")
         run["adapter"] = {"adapter": "bitbox02", "signer": "BitBox02 firmware simulator", "version": version}
         d = tmp_path / f"bitbox02-v{version}" / "r"
         d.mkdir(parents=True)
         (d / "run.json").write_text(json.dumps(run))
     runs = load_runs(tmp_path)
-    assert [r["adapter"]["version"] for r in runs] == ["9.9.1", "9.26.3", "9.27.1"]
+    assert [r["adapter"]["version"] for r in runs] == ["9.9.1", "9.26.5", "9.27.1"]
     page = build(tmp_path, tmp_path / "site", tmp_path / "none.json", "https://x").read_text()
-    for version in ("9.9.1", "9.26.3", "9.27.1"):
+    for version in ("9.9.1", "9.26.5", "9.27.1"):
         assert f"BitBox02 firmware {version} (simulator)" in page
         assert f'id="bitbox02-{version}"' in page
+
+
+def test_bitbox02_rows_come_after_other_signers(tmp_path):
+    for adapter, version in (("bitbox02", "9.27.1"), ("rust-psbt", None), ("embit", None)):
+        run = _run("2026-11-20T00:00:00+00:00")
+        run["adapter"] = {"adapter": adapter, "signer": adapter, **({"version": version} if version else {})}
+        d = tmp_path / adapter / "r"
+        d.mkdir(parents=True)
+        (d / "run.json").write_text(json.dumps(run))
+    assert [r["adapter"]["adapter"] for r in load_runs(tmp_path)] == ["embit", "rust-psbt", "bitbox02"]

@@ -55,10 +55,10 @@ def load_runs(evidence: Path) -> list[dict]:
         key = _run_key(run, path.parent.name)
         if key not in latest or run["written"] > latest[key]["written"]:
             latest[key] = run
-    # Adapters in name order, firmware versions oldest first.
+    # Adapters in name order with the multi-version ones last, firmware versions oldest first.
     return sorted(
         latest.values(),
-        key=lambda r: (r["adapter"].get("adapter", ""), _version_tuple(r["adapter"].get("version") if _per_version(r["adapter"]) else None)),
+        key=lambda r: (r["adapter"].get("adapter") in PER_VERSION, r["adapter"].get("adapter", ""), _version_tuple(r["adapter"].get("version") if _per_version(r["adapter"]) else None)),
     )
 
 
