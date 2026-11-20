@@ -180,3 +180,17 @@ def test_bitbox02_rows_come_after_other_signers(tmp_path):
         d.mkdir(parents=True)
         (d / "run.json").write_text(json.dumps(run))
     assert [r["adapter"]["adapter"] for r in load_runs(tmp_path)] == ["embit", "rust-psbt", "bitbox02"]
+
+
+def test_partial_suite_is_labelled(tmp_path):
+    for adapter, n in (("embit", 5), ("bitbox02", 2)):
+        run = _run("2026-11-20T00:00:00+00:00")
+        run["adapter"] = {"adapter": adapter, "signer": adapter}
+        run["cases"] = [dict(run["cases"][0], id=f"C{i}") for i in range(n)]
+        d = tmp_path / adapter / "r"
+        d.mkdir(parents=True)
+        (d / "run.json").write_text(json.dumps(run))
+    page = build(tmp_path, tmp_path / "site", tmp_path / "none.json", "https://x").read_text()
+    assert page.count("a 2-case suite, not the full 5") == 1
+    assert "Only 2 of the 5 cases were run on this signer" in page
+    assert "Only 5 of" not in page
