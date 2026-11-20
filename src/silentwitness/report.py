@@ -161,9 +161,14 @@ def _verdict_chips(verdicts: list[str]) -> str:
     return " ".join(out)
 
 
+def _official_count(run: dict) -> int:
+    """Cases of a run without the unofficial extended vectors, which only some signers get."""
+    return sum(1 for c in run["cases"] if not c["source"].startswith("ext375"))
+
+
 def _full_total(runs: list[dict]) -> int:
     """Cases in the largest run: the yardstick for signers that ran only part of the suite."""
-    return max((len(r["cases"]) for r in runs), default=0)
+    return max((_official_count(r) for r in runs), default=0)
 
 
 def _overview(runs: list[dict]) -> str:
@@ -175,9 +180,10 @@ def _overview(runs: list[dict]) -> str:
         slug = escape(_run_key(run))
         counts = _counts(run)
         total = len(run["cases"])
+        ran = _official_count(run)
         partial = (
-            f' <span class="partial">(a {total}-case suite, not the full {full})</span>'
-            if total < full
+            f' <span class="partial">(a {ran}-case suite, not the full {full})</span>'
+            if ran < full
             else ""
         )
         rows.append(
@@ -243,6 +249,7 @@ def _signer_section(run: dict, annotations: dict, full: int = 0) -> str:
     notes = annotations.get(a.get("adapter", ""), {})
     counts = _counts(run)
     total = len(run["cases"])
+    ran = _official_count(run)
     groups: dict[str, list[dict]] = {}
     for c in run["cases"]:
         groups.setdefault(_group(c), []).append(c)
@@ -283,9 +290,9 @@ def _signer_section(run: dict, annotations: dict, full: int = 0) -> str:
     }.
   </p>
   {
-        f'<p class="partial-note">Only {total} of the {full} cases were run on this signer, '
-        f"so this result does not cover the other {full - total}; they are not passes.</p>"
-        if total < full
+        f'<p class="partial-note">Only {ran} of the {full} cases were run on this signer, '
+        f"so this result does not cover the other {full - ran}; they are not passes.</p>"
+        if ran < full
         else ""
     }
   <div class="folds">
