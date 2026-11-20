@@ -22,7 +22,7 @@ env:
   BITBOX_API_COMMIT: 0663f047bdbe821ef2bbcda58620b8e828f961df
 
 jobs:
-  # BitBox02: the official firmware simulators, 9.21.0 to 9.27.1, one scorecard row per version.
+  # BitBox02: the official firmware simulators, the two latest releases (9.26.5, 9.27.1), one scorecard row per version.
   # Third-party code, same rules as Krux: pinned commit, simulators verified by sha256, read-only,
   # no secrets, only evidence leaves the job. 9.21.0 to 9.26.3 are in the range hit by the
   # lock-funds bug fixed in 9.26.5 (public: https://blog.bitbox.swiss/en/bitbox-08-2026-dixence-update/),
@@ -60,14 +60,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Affected by the lock-funds bug (9.21.0 to 9.26.4)
-          - { version: v9.21.0, affected: true, sha256: 72031b226ea344970a6a1506893838a63b075e0bad726557ab9d941b42c534f5 }
-          - { version: v9.22.0, affected: true, sha256: 3af12697f6fd51b155bf277ef01ef3eea5290908bff99a4aae83a95cb144ced1 }
-          - { version: v9.23.0, affected: true, sha256: 2740eb4be1abd1eb8603478c7a00874f2bff66e620c229348094a427ae8a1fde }
-          - { version: v9.24.0, affected: true, sha256: a64cefb90461f479e373b5f5dee4f340f07b4619fbcb55c87784f541b4400e34 }
-          - { version: v9.25.1, affected: true, sha256: f4b4294a1a339b3a7d52cc0f4d93a19846099807f03adefab2b42bf9899bd5d4 }
-          - { version: v9.26.1, affected: true, sha256: 91ddf47eb0653ce8b3d3344a8e329fc7fef90adfa51e39c5214830cf6e21cccf }
-          - { version: v9.26.3, affected: true, sha256: 606e1fe6845430a47d1ecbda1df77a3b5e43a5dd164d2568431bbfdc882004dc }
           # Fixed (9.26.5 and later)
           - { version: v9.26.5, affected: false, sha256: 21a394c3d7642e0a251b340fba9b601742ae98c3790e439b6258b55e1a4585bf }
           - { version: v9.27.1, affected: false, sha256: 0b049efb21dcf8a447e9f46c660c731e38fb83101023d4f80f1f423ddaa4126b }

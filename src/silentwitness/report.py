@@ -55,10 +55,14 @@ def load_runs(evidence: Path) -> list[dict]:
         key = _run_key(run, path.parent.name)
         if key not in latest or run["written"] > latest[key]["written"]:
             latest[key] = run
-    # Adapters in name order, firmware versions oldest first.
+    # Adapters in name order with the multi-version ones last, firmware versions oldest first.
     return sorted(
         latest.values(),
-        key=lambda r: (r["adapter"].get("adapter", ""), _version_tuple(r["adapter"].get("version") if _per_version(r["adapter"]) else None)),
+        key=lambda r: (
+            r["adapter"].get("adapter") in PER_VERSION,
+            r["adapter"].get("adapter", ""),
+            _version_tuple(r["adapter"].get("version") if _per_version(r["adapter"]) else None),
+        ),
     )
 
 
@@ -157,18 +161,29 @@ def _verdict_chips(verdicts: list[str]) -> str:
     return " ".join(out)
 
 
+def _full_total(runs: list[dict]) -> int:
+    """Cases in the largest run: the yardstick for signers that ran only part of the suite."""
+    return max((len(r["cases"]) for r in runs), default=0)
+
+
 def _overview(runs: list[dict]) -> str:
     """One compact row per signer under the headline, so every signer is on the first screen."""
     rows = []
+    full = _full_total(runs)
     for run in runs:
         a = run["adapter"]
         slug = escape(_run_key(run))
         counts = _counts(run)
         total = len(run["cases"])
+        partial = (
+            f' <span class="partial">(a {total}-case suite, not the full {full})</span>'
+            if total < full
+            else ""
+        )
         rows.append(
             f'<a class="ov" href="#{slug}"><span class="ov-name">{escape(_signer_name(run))}</span>'
             f'<span class="ov-commit">commit <code>{escape(_short(a.get("commit")))}</code></span>'
-            f'<span class="ov-tally"><strong>{counts["pass"]}</strong> of {total} correct</span>'
+            f'<span class="ov-tally"><strong>{counts["pass"]}</strong> of {total} correct{partial}</span>'
             f'<span class="ov-chips">{_verdict_chips([c["verdict"] for c in run["cases"]])}</span></a>'
         )
     if not rows:
@@ -222,7 +237,7 @@ def _case_row(c: dict, slug: str, note: str | None) -> str:
 </details>"""
 
 
-def _signer_section(run: dict, annotations: dict) -> str:
+def _signer_section(run: dict, annotations: dict, full: int = 0) -> str:
     a = run["adapter"]
     slug = escape(_run_key(run))
     notes = annotations.get(a.get("adapter", ""), {})
@@ -267,6 +282,12 @@ def _signer_section(run: dict, annotations: dict) -> str:
         f", <strong>{counts['unearned']}</strong> unearned" if counts.get("unearned") else ""
     }.
   </p>
+  {
+        f'<p class="partial-note">Only {total} of the {full} cases were run on this signer, '
+        f"so this result does not cover the other {full - total}; they are not passes.</p>"
+        if total < full
+        else ""
+    }
   <div class="folds">
   {
         f'''<details class="fold" id="{slug}-notable"><summary><span class="ftitle">Notable results</span>
@@ -375,6 +396,8 @@ header.top{display:flex;justify-content:space-between;align-items:baseline;paddi
 @media (prefers-reduced-motion: reduce){.cell{animation:none}.cell:hover{transform:none}}
 .tally{font-size:1.2rem;margin:22px 0 6px}
 .tally strong{font-variant-numeric:tabular-nums}
+.partial,.partial-note{color:var(--skip);font-size:.9rem}
+.partial-note{margin:0 0 6px}
 .runmeta{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:14px 0 0;
   color:var(--soft);font-size:.92rem}
 .runmeta dt{font-weight:600} .runmeta dd{margin:0;overflow-wrap:anywhere}
@@ -546,7 +569,7 @@ document.querySelectorAll('.copy').forEach(b=>b.addEventListener('click',async()
 def render(runs: list[dict], annotations: dict, repo: str) -> str:
     built_from = os.environ.get("GITHUB_SHA")
     total_cases = max((len(r["cases"]) for r in runs), default=0)
-    signers = "".join(_signer_section(r, annotations) for r in runs) or (
+    signers = "".join(_signer_section(r, annotations, _full_total(runs)) for r in runs) or (
         '<section class="signer"><p>No runs yet. Run '
         "<code>silentwitness run --adapter embit --suite all</code>, then build this page again.</p></section>"
     )
