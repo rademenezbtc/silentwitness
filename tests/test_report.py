@@ -201,3 +201,16 @@ def test_partial_suite_is_labelled(tmp_path):
     assert page.count("a 2-case suite, not the full 5") == 1
     assert "Only 2 of the 5 cases were run on this signer" in page
     assert "Only 5 of" not in page
+
+
+def test_extended_vectors_do_not_make_other_signers_look_partial(tmp_path):
+    for adapter, extra in (("embit", 0), ("rust-psbt", 3)):
+        run = _run("2026-11-20T00:00:00+00:00")
+        run["adapter"] = {"adapter": adapter, "signer": adapter}
+        run["cases"] = [dict(run["cases"][0], id=f"C{i}") for i in range(5)]
+        run["cases"] += [dict(run["cases"][0], id=f"X{i}", source="ext375-v0") for i in range(extra)]
+        d = tmp_path / adapter / "r"
+        d.mkdir(parents=True)
+        (d / "run.json").write_text(json.dumps(run))
+    page = build(tmp_path, tmp_path / "site", tmp_path / "none.json", "https://x").read_text()
+    assert "not the full" not in page

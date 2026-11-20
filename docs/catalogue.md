@@ -82,6 +82,27 @@ sending to silent-payment addresses needs a rule before it becomes a case.
 | D3 | Labeled SP address | Label or full address shown | done (adapters that report their screen) |
 | D4 | Amounts and fee when the signer fills in output scripts | Correct | planned |
 
+## BitBox02 (own suite `bitbox02`, firmware simulator)
+
+The BitBox02 takes its own protocol, not BIP 375 PSBTs: it takes no ECDH shares, DLEQ proofs,
+spending inputs or other parties' inputs, and it derives the silent-payment outputs itself. So
+the BIP 375 vectors, S5, S8 and P1–P5 are not asked of it, and the cases below are the ones that
+can go through the translation to its protocol. They use the simulator's fixed public mnemonic.
+
+| ID | Case | Expected | Status |
+|---|---|---|---|
+| BB-CTRL-SEND, BB-CTRL-TR, BB-CTRL-MIXED | Valid sends with P2WPKH, taproot and mixed inputs | Sign; outputs match independent derivation | done |
+| BB-S2 | Own receive-branch output that carries a host sp1 address (S2 in the device's terms) | Refuse | done |
+| BB-S3a | S3a: previous transaction does not hash to the txid | Refuse | done |
+| BB-S9a, BB-S9b | S9a and S9b: SIGHASH_NONE, ANYONECANPAY in the PSBT | Refuse, or sign with SIGHASH_ALL only | done (the device signs with ALL) |
+| BB-D1, BB-D3 | D1 and D3 on the simulator's screen output | Full sp1 address shown | done |
+
+Tried on firmware 9.27.1 and not expressible: S3b (bitbox-api panics on a P2WSH witness UTXO),
+S9c1–S9c3 (another party's input: "Could not find our key in an input"), S9d (bitbox-api rejects a
+NUMS internal key on the device's own input), D2 (the device refuses an own output that carries an
+sp1 address, and two sp1 outputs), CTRL-ORDER and CTRL-ORDERDESC (the device refuses two sp1
+outputs even to two different recipients: "invalid input"; the cause is not confirmed).
+
 ## Resources (real devices only)
 
 | ID | Measure | Status |

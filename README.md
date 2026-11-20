@@ -110,7 +110,7 @@ Checked 16 Nov 2026.
 | Krux | draft [PR #925](https://github.com/selfcustody/krux/pull/925) (`notTanveer:feat/silent-payments-V2`), unreleased | `krux` (headless firmware signer in a worker process; needs `SW_KRUX_DIR`) | **working** (CI, headless firmware code) |
 | Coldcard | draft [PR #587](https://github.com/Coldcard/firmware/pull/587) | simulator / SD | tried, parked: the simulator builds on CI but its MicroPython crashes at boot (segfault); needs an older toolchain |
 | [rust-psbt](https://git.rust-bitcoin.org/rust-bitcoin/rust-psbt) (Rust crate `psbt-v2`) | BIP 375 Signer rules in [PR #425](https://gitea.bitcoin.ninja/rust-bitcoin/rust-psbt/pulls/425), unmerged | `rust-psbt` (Rust harness binary; needs a Rust toolchain) | **working** (CI). The crate checks and signs but has no BIP 352, 374 or 376 code, so the adapter acts as its caller: it adds the signer's own ECDH shares and proofs and supplies derived scripts. Spending and multi-party cases are skipped. Also run on the extended vectors from the crate's own PR (suite `ext375`, unofficial: see `vectors/README.md`). |
-| BitBox02 | send, released (9.26.5+) | USB | planned |
+| BitBox02 | send, released (9.21.0+; 9.26.5 fixed a lock-funds bug) | `bitbox02` (firmware simulator through a patched bitbox-api-rs harness; PSBT translated to the device protocol) | **working** (CI, simulators 9.26.5 and 9.27.1). Nine cases of its own suite `bitbox02`: the device takes no ECDH shares, proofs or foreign inputs, so most of the catalogue cannot be asked of it (see docs/catalogue.md). Real device over USB: planned. |
 
 ## Test catalogue
 

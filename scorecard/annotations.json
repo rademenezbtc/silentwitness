@@ -48,5 +48,16 @@
     "EXT375-I17": "Skipped: the crate signed, but this case is about a DLEQ proof, which rust-psbt leaves to its caller by design (its own test for this vector is ignored). The BIP 375 reference code refuses the returned PSBT, so the check works at the caller level. The same applies to I20, I47 and I48 (derived scripts).",
     "EXT375-I10": "Skipped: refused only because no output script was ever derived; the crate does not derive them. The same applies to I18.",
     "EXT375-V03": "Skipped: the vector gives a P2WPKH input with only a witness UTXO. rust-psbt's strict signer refuses to sign it without the previous transaction (BIP 174). The crate's own tests sign this vector with the checks switched off."
+  },
+  "bitbox02": {
+    "BB-CTRL-SEND": "Signed correctly. The device generated the silent-payment output itself and it matches the independent BIP 352 derivation; every signature verifies.",
+    "BB-CTRL-TR": "Signed correctly with two taproot inputs; the generated output matches the independent derivation.",
+    "BB-CTRL-MIXED": "Signed correctly with a P2WPKH and a taproot input together; the generated output matches the independent derivation.",
+    "BB-S2": "Refused with 'invalid input'. The host marks a receive-branch output as the user's own and adds its own sp1 address. Firmware before 9.26.3 let this through; the valid control (BB-CTRL-SEND) signs, so the refusal is for this tampering.",
+    "BB-S3a": "Refused with 'invalid input' when input 0's previous transaction does not hash to its txid. The valid control signs. The refusal reason is the device's generic one, so this does not show which check fired.",
+    "BB-S9a": "Counted as correct because the device signed with SIGHASH_ALL (every signature ends in 0x01) although the PSBT asked for SIGHASH_NONE; the PSBT's own sighash field appears not to reach the device. A refusal would also be correct. This tests bitbox-api's PSBT conversion as much as the device.",
+    "BB-S9b": "Same as S9a for SIGHASH_ALL|ANYONECANPAY: the device signed with SIGHASH_ALL, so the host's value had no effect on what was signed.",
+    "BB-D1": "The device shows the full sp1 address, in groups of four characters, on its payment confirmation screen, next to the amount, then a fee screen.",
+    "BB-D3": "The device shows the full labeled sp1 address. It differs from the unlabeled address in the spend-key part, so the label is visible to the user."
   }
 }
