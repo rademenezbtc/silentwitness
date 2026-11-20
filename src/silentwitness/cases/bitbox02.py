@@ -107,10 +107,10 @@ def bitbox02_cases() -> list[Case]:
     #   S3b           bitbox-api panics on a P2WSH witness UTXO (btc.rs: not yet implemented)
     #   S9c1/S9c2/S9c3 another party's input: "Could not find our key in an input"
     #   S9d           NUMS internal key on the device's own input: bitbox-api rejects the PSBT
-    #   D2            own silent-payment change next to a payment: the device refuses an own
-    #                 output that carries an sp1 address (BB-S2) and two sp1 outputs
-    #   CTRL-ORDER*   the device refuses two sp1 outputs even to two different recipients
-    #                 ("invalid input"), so the k-ordering rule cannot be reached
+    #   D2            own silent-payment change next to a payment: firmware signtx.rs rejects an
+    #                 own output that carries an sp1 address (BB-S2), and allows one sp1 output
+    #   CTRL-ORDER*   the firmware's streaming-silent-payments crate allows one silent-payment
+    #                 output per transaction (k is fixed at 0), so k-ordering cannot be reached
     # The BIP 375 vectors and S5/S8/P* need shares, proofs or SP inputs the device never takes.
     send = scenario("bb-send", ("wpkh", "wpkh"))
     base = send.psbt()
