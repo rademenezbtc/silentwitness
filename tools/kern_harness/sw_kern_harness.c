@@ -71,11 +71,29 @@ extern bool key_get_fingerprint_raw(unsigned char *fingerprint_out);
 bool key_get_fingerprint(unsigned char *fp) { return key_get_fingerprint_raw(fp); }
 
 /* --- output --- */
-static void emit(const char *outcome, const char *reason, const char *psbt_b64) {
+static void emit_with_change(const char *outcome, const char *reason, const char *psbt_b64,
+                             const struct wally_psbt *change_of) {
   printf("{\"outcome\":\"%s\",\"reason\":\"%s\"", outcome, reason ? reason : "");
   if (psbt_b64) printf(",\"psbt\":\"%s\"", psbt_b64);
+  if (change_of) {
+    /* Which outputs the firmware treats as its own change: a silent payment output with the
+     * change label, or a whitelisted single-sig output on the change chain. */
+    printf(",\"change\":{");
+    for (size_t i = 0; i < change_of->num_outputs; i++) {
+      output_ownership_t o = psbt_classify_output(change_of, i, g_testnet);
+      bool change = o.ownership != PSBT_OWNERSHIP_EXTERNAL &&
+                    ((o.source.kind == CLAIM_SILENT_PAYMENT && o.source.silent_payment.is_change) ||
+                     (o.source.kind == CLAIM_WHITELIST && o.source.whitelist.chain == 1));
+      printf("%s\"%zu\":%s", i ? "," : "", i, change ? "true" : "false");
+    }
+    printf("}");
+  }
   printf("}\n");
   fflush(stdout);
+}
+
+static void emit(const char *outcome, const char *reason, const char *psbt_b64) {
+  emit_with_change(outcome, reason, psbt_b64, NULL);
 }
 
 static void refuse(const char *reason) { emit("refused", reason, NULL); exit(0); }
@@ -199,6 +217,6 @@ int main(void) {
     emit("crashed", "could not encode the signed PSBT", NULL);
     return 2;
   }
-  emit("signed", "", out);
+  emit_with_change("signed", "", out, psbt);
   return 0;
 }

@@ -161,5 +161,8 @@ class Kern(Adapter):
             outcome,
             returned_psbt=merge_reply(case.psbt, reply) if reply else None,
             reason=resp.get("reason", ""),
+            change={int(i): bool(v) for i, v in resp["change"].items()}
+            if "change" in resp
+            else None,
             duration_s=took,
         )

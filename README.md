@@ -14,7 +14,7 @@ and keeps the evidence.
 rebuilt from a fresh run on every push to `main`.
 
 > **Status: pre-alpha.** The BIP 375 baseline and the attack cases (S1–S9, P1–P5,
-> D1–D3) run against **embit**, **Krux**, **rust-psbt** and **BitBox02** (firmware simulators 9.26.5 and 9.27.1) in CI. The multi-party cases (S5, S8)
+> D1–D3) run against **embit**, **Krux**, **Kern**, **rust-psbt** and **BitBox02** (firmware simulators 9.26.5 and 9.27.1) in CI. The multi-party cases (S5, S8)
 > need a signer that supports other parties' inputs and are skipped on both. A
 > Coldcard simulator was tried and parked (see Targets); real devices and the
 > camera rig are next. Test keys and signet/regtest only.
@@ -106,7 +106,7 @@ Checked 16 Nov 2026.
 |---|---|---|---|
 | embit (library behind SeedSigner, Krux, Specter DIY) | send + spend in [PR #145](https://github.com/diybitcoinhardware/embit/pull/145), unmerged | `embit` (direct Python) | **working** |
 | SeedSigner | address display ([PR #769](https://github.com/SeedSigner/seedsigner/pull/769)); sending requested in [#633](https://github.com/SeedSigner/seedsigner/issues/633) | QR rig | planned |
-| [Kern](https://github.com/odudex/Kern) (ESP32-P4) | none yet | simulator, QR rig | planned (PSBT handling first) |
+| [Kern](https://github.com/odudex/Kern) (ESP32-P4) | draft [PR #221](https://github.com/odudex/Kern/pull/221) (`pythcoiner:silent_payments`), unreleased | `kern` (C harness built inside a Kern checkout with Kern's own host-test Makefile; runs the firmware's PSBT and BIP 375 code without screens) | **working** (CI, pinned commit). Keys load from a mnemonic only, so the 44 BIP 375 vectors (raw keys) are skipped; display cases need a screen reader. Simulator and QR rig: planned. |
 | Krux | draft [PR #925](https://github.com/selfcustody/krux/pull/925) (`notTanveer:feat/silent-payments-V2`), unreleased | `krux` (headless firmware signer in a worker process; needs `SW_KRUX_DIR`) | **working** (CI, headless firmware code) |
 | Coldcard | draft [PR #587](https://github.com/Coldcard/firmware/pull/587) | simulator / SD | tried, parked: the simulator builds on CI but its MicroPython crashes at boot (segfault); needs an older toolchain |
 | [rust-psbt](https://git.rust-bitcoin.org/rust-bitcoin/rust-psbt) (Rust crate `psbt-v2`) | BIP 375 Signer rules in [PR #425](https://gitea.bitcoin.ninja/rust-bitcoin/rust-psbt/pulls/425), unmerged | `rust-psbt` (Rust harness binary; needs a Rust toolchain) | **working** (CI). The crate checks and signs but has no BIP 352, 374 or 376 code, so the adapter acts as its caller: it adds the signer's own ECDH shares and proofs and supplies derived scripts. Spending and multi-party cases are skipped. Also run on the extended vectors from the crate's own PR (suite `ext375`, unofficial: see `vectors/README.md`). |
