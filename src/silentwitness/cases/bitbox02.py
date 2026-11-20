@@ -20,7 +20,7 @@ from .. import psbt_raw as pr
 from ..crypto import p2wpkh_script, p2wsh_script
 from ..model import Case, Expect
 from ..tx import Tx, TxOut
-from .builder import HOST, NUMS_H, RECIPIENT, Party, Scenario
+from .builder import HOST, RECIPIENT, Party, Scenario
 
 # BIP 39 mnemonic the BitBox02 simulator is initialised with (bitbox-api-rs tests/util).
 SIM_MNEMONIC = (
@@ -100,8 +100,10 @@ def bitbox02_cases() -> list[Case]:
     s2.codes[0] = (HOST.scan, HOST.spend)
     s2.pay_p2wpkh_change(CHANGE_P2WPKH, 69_000)
 
-    # Attack cases ported from the main suite (S3, S9, ordering), built on the same valid
+    # Attack cases ported from the main suite (S3, S9a/b, ordering), built on the same valid
     # transactions as the controls. The tampering is the same; only the signer's keys differ.
+    # Not ported: S9c1-S9d. bitbox-api cannot put another party's input (S9c1/S9c2/S9c3) or a
+    # NUMS internal key on the device's own input (S9d) through its PSBT conversion.
     send = scenario("bb-send", ("wpkh", "wpkh"))
     base = send.psbt()
 
@@ -125,24 +127,7 @@ def bitbox02_cases() -> list[Case]:
         pr.put(psbt.inputs[0], pr.PSBT_IN_SIGHASH_TYPE, value.to_bytes(4, "little"))
         return psbt
 
-    # S9c2 / S9c3: another party's input spends a segwit v2 output. It is not the device's
-    # input, so a refusal here may have that reason and not the BIP 375 rule: read the
-    # device's reason in the evidence before counting a pass.
-    def with_v2(tag: str, non_witness: bool) -> Scenario:
-        sc = Scenario(tag, user=user)
-        sc.add_p2wpkh(IN_P2WPKH, 100_000)
-        sc.add_ineligible("v2", 50_000, non_witness=non_witness)
-        sc.pay_sp(RECIPIENT.scan, RECIPIENT.spend, 80_000)
-        sc.pay_p2wpkh_change(CHANGE_P2WPKH, 69_000)
-        return sc
-
-    v2 = with_v2("bb-v2", False)
-    v2_nw = with_v2("bb-v2-nw", True)
-
-    # S9d: the host marks the device's own taproot input as NUMS.
     mixed = scenario("bb-mixed", ("wpkh", "tr"))
-    s9d = mixed.psbt()
-    pr.put(s9d.inputs[1], pr.PSBT_IN_TAP_INTERNAL_KEY, NUMS_H)
 
     # Two outputs to one scan key: k follows the sorted spend keys, not the output index.
     spends = sorted([RECIPIENT.spend, RECIPIENT.labeled_spend(1)])
@@ -155,6 +140,14 @@ def bitbox02_cases() -> list[Case]:
         sc.pay_sp(RECIPIENT.scan, second, 70_000)
         sc.pay_p2wpkh_change(CHANGE_P2WPKH, 9_000)
         return sc
+
+    # Control for the ordering cases: two sp1 outputs to different recipients.
+    two = Scenario("bb-two-scan", user=user)
+    two.add_p2wpkh(IN_P2WPKH, 100_000)
+    two.add_p2wpkh(IN_P2WPKH_2, 50_000)
+    two.pay_sp(RECIPIENT.scan, RECIPIENT.spend, 70_000)
+    two.pay_sp(HOST.scan, HOST.spend, 70_000)
+    two.pay_p2wpkh_change(CHANGE_P2WPKH, 9_000)
 
     asc = ordered("bb-order", spends[0], spends[1])
     desc = ordered("bb-order-desc", spends[1], spends[0])
@@ -177,6 +170,12 @@ def bitbox02_cases() -> list[Case]:
             "valid: P2WPKH + P2TR inputs pay an sp1 address, P2WPKH change",
             mixed,
             "BIP 352: input hash over mixed input types",
+        ),
+        _case(
+            "BB-CTRL-TWO-SCAN",
+            "valid: two sp1 outputs to two different recipients, P2WPKH change",
+            two,
+            "BIP 352: one output per scan key, each derived by the device",
         ),
         _case(
             "BB-CTRL-ORDER",
@@ -213,43 +212,22 @@ def bitbox02_cases() -> list[Case]:
             "BB-S9a",
             "host sets input 0 to SIGHASH_NONE on a transaction with an sp1 output",
             send,
-            "BIP 375 Signer: only SIGHASH_ALL is allowed with silent-payment outputs",
+            "BIP 375: only SIGHASH_ALL may be signed with silent-payment outputs. The device "
+            "protocol has no sighash field, so a correct result is a refusal or SIGHASH_ALL "
+            "signatures (the judge rejects any other sighash)",
             sighash(0x02),
-            Expect.REFUSE,
-            "BB-CTRL-SEND",
+            control="BB-CTRL-SEND",
+            refusal_ok=True,
         ),
         _case(
             "BB-S9b",
             "host sets input 0 to SIGHASH_ALL|ANYONECANPAY on a transaction with an sp1 output",
             send,
-            "BIP 375 Signer: only SIGHASH_ALL is allowed with silent-payment outputs",
+            "BIP 375: only SIGHASH_ALL may be signed with silent-payment outputs. The device "
+            "protocol has no sighash field, so a correct result is a refusal or SIGHASH_ALL "
+            "signatures (the judge rejects any other sighash)",
             sighash(0x81),
-            Expect.REFUSE,
-            "BB-CTRL-SEND",
-        ),
-        _case(
-            "BB-S9c2",
-            "an input spends a segwit v2 output while the transaction pays an sp1 address",
-            v2,
-            "BIP 375 Signer: MUST fail if any input spends segwit version > 1",
-            expect=Expect.REFUSE,
             control="BB-CTRL-SEND",
-        ),
-        _case(
-            "BB-S9c3",
-            "a segwit v2 output (seen only in the previous transaction) beside an sp1 output",
-            v2_nw,
-            "BIP 375 Signer: MUST fail if any input spends segwit version > 1",
-            expect=Expect.REFUSE,
-            control="BB-CTRL-SEND",
-        ),
-        _case(
-            "BB-S9d",
-            "host marks the device's own taproot input as NUMS so it leaves the shared secret",
-            mixed,
-            "BIP 352: eligibility follows the real input; outputs must include the own key",
-            s9d,
-            control="BB-CTRL-MIXED",
             refusal_ok=True,
         ),
         Case(

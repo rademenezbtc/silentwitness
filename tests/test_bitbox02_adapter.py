@@ -56,6 +56,7 @@ def test_suite_is_keyed_to_the_simulator_seed():
         "BB-CTRL-SEND",
         "BB-CTRL-TR",
         "BB-CTRL-MIXED",
+        "BB-CTRL-TWO-SCAN",
         "BB-CTRL-ORDER",
         "BB-CTRL-ORDERDESC",
         "BB-S2",
@@ -63,9 +64,6 @@ def test_suite_is_keyed_to_the_simulator_seed():
         "BB-S3b",
         "BB-S9a",
         "BB-S9b",
-        "BB-S9c2",
-        "BB-S9c3",
-        "BB-S9d",
     }
     for case in CASES.values():
         assert case.seed == mod.SIM_MNEMONIC

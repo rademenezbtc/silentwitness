@@ -241,8 +241,12 @@ class BitBox02(Adapter):
                     sim.kill()
                     sim.wait()
         if proc.returncode != 0:
-            tail = proc.stderr.strip().splitlines()[-1:] or [""]
-            return {}, f"harness exited {proc.returncode}: {tail[0]}"
+            lines = proc.stderr.strip().splitlines()
+            # A Rust panic prints its message after a "panicked at" line; keep that, not the
+            # RUST_BACKTRACE hint that follows it.
+            at = next((i for i, ln in enumerate(lines) if "panicked at" in ln), None)
+            detail = " ".join(lines[at : at + 3]) if at is not None else (lines[-1:] or [""])[0]
+            return {}, f"harness exited {proc.returncode}: {detail}"
         try:
             return json.loads(proc.stdout), ""
         except json.JSONDecodeError:
