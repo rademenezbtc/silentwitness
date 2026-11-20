@@ -588,10 +588,7 @@ def render(runs: list[dict], annotations: dict, repo: str) -> str:
   </div>
 </section>
 <footer>
-  <p>Results cover unreleased silent-payment code, which our disclosure policy allows us to
-  publish straight away, and BitBox02 firmware releases whose known bug is fixed and public. Other
-  problems in released firmware are reported privately first and appear here
-  only after a fix ships or 90 days pass. Test keys and test networks only; no real funds.</p>
+  <p>Test keys and test networks only; no real funds.</p>
   <p>MIT licence{f". Built from commit <code>{escape(built_from[:7])}</code>" if built_from else ""}.</p>
 </footer>
 </div>
