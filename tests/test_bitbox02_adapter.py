@@ -61,6 +61,7 @@ def test_suite_is_keyed_to_the_simulator_seed():
         "BB-S9a",
         "BB-S9b",
         "BB-D1",
+        "BB-D3",
     }
     for case in CASES.values():
         assert case.seed == mod.SIM_MNEMONIC
