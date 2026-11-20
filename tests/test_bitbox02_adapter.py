@@ -56,12 +56,8 @@ def test_suite_is_keyed_to_the_simulator_seed():
         "BB-CTRL-SEND",
         "BB-CTRL-TR",
         "BB-CTRL-MIXED",
-        "BB-CTRL-TWO-SCAN",
-        "BB-CTRL-ORDER",
-        "BB-CTRL-ORDERDESC",
         "BB-S2",
         "BB-S3a",
-        "BB-S3b",
         "BB-S9a",
         "BB-S9b",
     }

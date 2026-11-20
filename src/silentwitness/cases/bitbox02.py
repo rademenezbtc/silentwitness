@@ -100,10 +100,15 @@ def bitbox02_cases() -> list[Case]:
     s2.codes[0] = (HOST.scan, HOST.spend)
     s2.pay_p2wpkh_change(CHANGE_P2WPKH, 69_000)
 
-    # Attack cases ported from the main suite (S3, S9a/b, ordering), built on the same valid
-    # transactions as the controls. The tampering is the same; only the signer's keys differ.
-    # Not ported: S9c1-S9d. bitbox-api cannot put another party's input (S9c1/S9c2/S9c3) or a
-    # NUMS internal key on the device's own input (S9d) through its PSBT conversion.
+    # Attack cases ported from the main suite (S3a, S9a, S9b), built on the same valid
+    # transaction as BB-CTRL-SEND. The tampering is the same; only the signer's keys differ.
+    # Tried and not expressible through this path (first CI run, firmware 9.27.1):
+    #   S3b           bitbox-api panics on a P2WSH witness UTXO (btc.rs: not yet implemented)
+    #   S9c1/S9c2/S9c3 another party's input: "Could not find our key in an input"
+    #   S9d           NUMS internal key on the device's own input: bitbox-api rejects the PSBT
+    #   CTRL-ORDER*   the device refuses two sp1 outputs even to two different recipients
+    #                 ("invalid input"), so the k-ordering rule cannot be reached
+    # The BIP 375 vectors and S5/S8/P* need shares, proofs or SP inputs the device never takes.
     send = scenario("bb-send", ("wpkh", "wpkh"))
     base = send.psbt()
 
@@ -113,44 +118,12 @@ def bitbox02_cases() -> list[Case]:
     real.vout[1] = TxOut(real.vout[1].amount, p2wsh_script(b"silentwitness/s3"))
     pr.put(s3a.inputs[0], pr.PSBT_IN_NON_WITNESS_UTXO, real.serialize())
 
-    # S3b: input 0's witness UTXO says P2WSH, its previous transaction says P2WPKH.
-    s3b = base.copy()
-    amount = int.from_bytes(pr.get(s3b.inputs[0], pr.PSBT_IN_WITNESS_UTXO)[:8], "little")
-    pr.put(
-        s3b.inputs[0],
-        pr.PSBT_IN_WITNESS_UTXO,
-        TxOut(amount, p2wsh_script(b"silentwitness/s3")).serialize(),
-    )
-
     def sighash(value: int) -> pr.RawPSBT:
         psbt = base.copy()
         pr.put(psbt.inputs[0], pr.PSBT_IN_SIGHASH_TYPE, value.to_bytes(4, "little"))
         return psbt
 
     mixed = scenario("bb-mixed", ("wpkh", "tr"))
-
-    # Two outputs to one scan key: k follows the sorted spend keys, not the output index.
-    spends = sorted([RECIPIENT.spend, RECIPIENT.labeled_spend(1)])
-
-    def ordered(tag: str, first: bytes, second: bytes) -> Scenario:
-        sc = Scenario(tag, user=user)
-        sc.add_p2wpkh(IN_P2WPKH, 100_000)
-        sc.add_p2wpkh(IN_P2WPKH_2, 50_000)
-        sc.pay_sp(RECIPIENT.scan, first, 70_000)
-        sc.pay_sp(RECIPIENT.scan, second, 70_000)
-        sc.pay_p2wpkh_change(CHANGE_P2WPKH, 9_000)
-        return sc
-
-    # Control for the ordering cases: two sp1 outputs to different recipients.
-    two = Scenario("bb-two-scan", user=user)
-    two.add_p2wpkh(IN_P2WPKH, 100_000)
-    two.add_p2wpkh(IN_P2WPKH_2, 50_000)
-    two.pay_sp(RECIPIENT.scan, RECIPIENT.spend, 70_000)
-    two.pay_sp(HOST.scan, HOST.spend, 70_000)
-    two.pay_p2wpkh_change(CHANGE_P2WPKH, 9_000)
-
-    asc = ordered("bb-order", spends[0], spends[1])
-    desc = ordered("bb-order-desc", spends[1], spends[0])
 
     return [
         _case(
@@ -172,39 +145,11 @@ def bitbox02_cases() -> list[Case]:
             "BIP 352: input hash over mixed input types",
         ),
         _case(
-            "BB-CTRL-TWO-SCAN",
-            "valid: two sp1 outputs to two different recipients, P2WPKH change",
-            two,
-            "BIP 352: one output per scan key, each derived by the device",
-        ),
-        _case(
-            "BB-CTRL-ORDER",
-            "valid: two sp1 outputs with one scan key, k assigned by sorted spend key",
-            asc,
-            "BIP 375: k follows the lexicographic order of the spend keys",
-        ),
-        _case(
-            "BB-CTRL-ORDERDESC",
-            "valid: two same-scan sp1 outputs listed in descending spend-key order",
-            desc,
-            "BIP 375: k follows the sorted spend keys, not the output index",
-        ),
-        _case(
             "BB-S3a",
             "host forges input 0's previous transaction (txid mismatch) to make it look ineligible",
             send,
             "BIP 174/370 Signer: non-witness UTXO must match the previous txid",
             s3a,
-            Expect.REFUSE,
-            "BB-CTRL-SEND",
-        ),
-        _case(
-            "BB-S3b",
-            "host lies in input 0's witness UTXO (P2WSH instead of P2WPKH) to drop it from the "
-            "input hash",
-            send,
-            "BIP 352 input eligibility depends on UTXO data; witness and non-witness UTXO disagree",
-            s3b,
             Expect.REFUSE,
             "BB-CTRL-SEND",
         ),
