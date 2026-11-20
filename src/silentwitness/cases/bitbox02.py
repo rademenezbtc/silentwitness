@@ -17,6 +17,7 @@ firmware's git history documents: see its comment.
 from __future__ import annotations
 
 from .. import psbt_raw as pr
+from .. import sp_address
 from ..crypto import p2wpkh_script, p2wsh_script
 from ..model import Case, Expect
 from ..tx import Tx, TxOut
@@ -53,7 +54,7 @@ def _case(
     **kw,
 ) -> Case:
     """A case in the device's terms. `psbt` is a tampered copy of the scenario's own PSBT."""
-    if expect == Expect.SIGN:
+    if expect in (Expect.SIGN, Expect.DISPLAY):
         kw.setdefault("signed_inputs", tuple(range(len(sc.inputs))))
         kw.setdefault("expected_scripts", sc.expected_scripts())
     return Case(
@@ -174,6 +175,15 @@ def bitbox02_cases() -> list[Case]:
             sighash(0x81),
             control="BB-CTRL-SEND",
             refusal_ok=True,
+        ),
+        # D1: the simulator writes its display to stdout; the adapter keeps that as the screen.
+        _case(
+            "BB-D1",
+            "payment to an sp1 address: the screen shows the address",
+            send,
+            "Display: the user must see the silent payment address they are paying",
+            expect=Expect.DISPLAY,
+            expected_display=(sp_address.encode(RECIPIENT.scan, RECIPIENT.spend, hrp="sp"),),
         ),
         Case(
             id="BB-S2",
