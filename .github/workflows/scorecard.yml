@@ -160,7 +160,7 @@ jobs:
           git clone "https://github.com/$KERN_REPO.git" "$RUNNER_TEMP/kern"
           git -C "$RUNNER_TEMP/kern" checkout "$KERN_COMMIT"
           # Only what the host build needs: libwally-core and bip138.
-          git -C "$RUNNER_TEMP/kern" submodule update --init components/libwally-core/upstream components/bip138
+          git -C "$RUNNER_TEMP/kern" submodule update --init --recursive components/libwally-core/upstream components/bip138
       - name: Build the harness with Kern's host-test Makefile
         working-directory: ${{ runner.temp }}/kern/main/core/test
         run: |
