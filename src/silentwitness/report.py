@@ -2,7 +2,8 @@
 
     silentwitness report --evidence evidence --out scorecard/site
 
-Takes the latest run.json per adapter, adds the plain-language notes in
+Takes the latest run.json per adapter (and per firmware version, for signers that are
+tested on several), adds the plain-language notes in
 scorecard/annotations.json, and writes index.html. The page makes no
 third-party requests: no fonts, scripts or trackers are loaded from anywhere.
 """
@@ -25,14 +26,40 @@ EXPECT = {"must_refuse": "Must refuse", "must_sign": "Must sign", "must_display"
 OUTCOME = {"refused": "Refused", "signed": "Signed", "crashed": "Crashed", "skipped": "Skipped"}
 
 
+# Adapters whose runs are tested on several firmware versions, each shown as its own signer.
+PER_VERSION = {"bitbox02"}
+
+
+def _per_version(a: dict) -> bool:
+    return a.get("adapter") in PER_VERSION and bool(a.get("version"))
+
+
+def _version_tuple(version: str | None) -> tuple[int, ...]:
+    try:
+        return tuple(int(p) for p in (version or "").split("."))
+    except ValueError:
+        return ()
+
+
+def _run_key(run: dict, default: str = "signer") -> str:
+    """Page id of a run: the adapter name, plus the firmware version when it records one."""
+    a = run["adapter"]
+    name = a.get("adapter", default)
+    return f"{name}-{a['version']}" if _per_version(a) else name
+
+
 def load_runs(evidence: Path) -> list[dict]:
     latest: dict[str, dict] = {}
     for path in sorted(evidence.rglob("run.json")):
         run = json.loads(path.read_text())
-        key = run["adapter"].get("adapter", path.parent.name)
+        key = _run_key(run, path.parent.name)
         if key not in latest or run["written"] > latest[key]["written"]:
             latest[key] = run
-    return [latest[k] for k in sorted(latest)]
+    # Adapters in name order, firmware versions oldest first.
+    return sorted(
+        latest.values(),
+        key=lambda r: (r["adapter"].get("adapter", ""), _version_tuple(r["adapter"].get("version") if _per_version(r["adapter"]) else None)),
+    )
 
 
 def _group(case: dict) -> str:
@@ -61,6 +88,8 @@ def _signer_name(run: dict) -> str:
         return "Krux (PR #925)" if "notTanveer/krux" in source else "Krux"
     if name.startswith("rust-psbt"):
         return "rust-psbt (PR #425)" if "macgyver/rust-psbt" in source else "rust-psbt"
+    if a.get("adapter") == "bitbox02":
+        return f"BitBox02 firmware {a['version']} (simulator)" if a.get("version") else "BitBox02"
     return name
 
 
@@ -133,7 +162,7 @@ def _overview(runs: list[dict]) -> str:
     rows = []
     for run in runs:
         a = run["adapter"]
-        slug = escape(a.get("adapter", "signer"))
+        slug = escape(_run_key(run))
         counts = _counts(run)
         total = len(run["cases"])
         rows.append(
@@ -195,7 +224,7 @@ def _case_row(c: dict, slug: str, note: str | None) -> str:
 
 def _signer_section(run: dict, annotations: dict) -> str:
     a = run["adapter"]
-    slug = escape(a.get("adapter", "signer"))
+    slug = escape(_run_key(run))
     notes = annotations.get(a.get("adapter", ""), {})
     counts = _counts(run)
     total = len(run["cases"])
@@ -560,7 +589,8 @@ def render(runs: list[dict], annotations: dict, repo: str) -> str:
 </section>
 <footer>
   <p>Results cover unreleased silent-payment code, which our disclosure policy allows us to
-  publish straight away. Problems in released firmware are reported privately first and appear here
+  publish straight away, and BitBox02 firmware releases whose known bug is fixed and public. Other
+  problems in released firmware are reported privately first and appear here
   only after a fix ships or 90 days pass. Test keys and test networks only; no real funds.</p>
   <p>MIT licence{f". Built from commit <code>{escape(built_from[:7])}</code>" if built_from else ""}.</p>
 </footer>
