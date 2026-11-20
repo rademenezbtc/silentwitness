@@ -80,6 +80,21 @@ static void emit(const char *outcome, const char *reason, const char *psbt_b64) 
 
 static void refuse(const char *reason) { emit("refused", reason, NULL); exit(0); }
 
+static psbt_gate_report_t g_report;
+static char gate_text[160];
+
+/* The gate that fired, naming the input or output behind it where the report has one. */
+static const char *gate_reason(psbt_gate_t g, const psbt_gate_report_t *report) {
+  if (g == PSBT_GATE_EXPECTED_OWNED || g == PSBT_GATE_PERMISSIVE) {
+    snprintf(gate_text, sizeof(gate_text), "gate: %s %zu %s",
+             report->flagged_is_input ? "input" : "output", report->flagged_index,
+             g == PSBT_GATE_EXPECTED_OWNED ? "carries our fingerprint but cannot be verified"
+                                           : "uses a non-standard derivation path");
+    return gate_text;
+  }
+  return NULL;
+}
+
 static const char *gate_name(psbt_gate_t g) {
   switch (g) {
   case PSBT_GATE_NOTHING_SIGNABLE: return "gate: nothing signable";
@@ -97,20 +112,25 @@ static const char *gate_name(psbt_gate_t g) {
   }
 }
 
+static void refuse_gate(psbt_gate_t g) {
+  const char *detail = gate_reason(g, &g_report);
+  refuse(detail ? detail : gate_name(g));
+}
+
 /* Classify every input and output and run the pre-review gate. Returns the gate result. */
 static psbt_gate_t classify_and_gate(struct wally_psbt *psbt) {
   psbt_gate_t gate = PSBT_GATE_NOTHING_SIGNABLE;
   input_ownership_t *inputs = calloc(psbt->num_inputs ? psbt->num_inputs : 1, sizeof(*inputs));
   output_ownership_t *outputs = calloc(psbt->num_outputs ? psbt->num_outputs : 1, sizeof(*outputs));
   psbt_gate_settings_t settings = {.expected_owned = false, .permissive = false, .partial = false};
-  psbt_gate_report_t report;
-  memset(&report, 0, sizeof(report));
+  psbt_gate_report_t *report = &g_report;
+  memset(report, 0, sizeof(*report));
   if (inputs && outputs) {
     for (size_t i = 0; i < psbt->num_inputs; i++)
       inputs[i] = psbt_classify_input(psbt, i, g_testnet);
     for (size_t i = 0; i < psbt->num_outputs; i++)
       outputs[i] = psbt_classify_output(psbt, i, g_testnet);
-    gate = psbt_gate_check(psbt, inputs, outputs, &settings, &report);
+    gate = psbt_gate_check(psbt, inputs, outputs, &settings, report);
   }
   free(inputs);
   free(outputs);
@@ -153,14 +173,14 @@ int main(void) {
   if (parsed != PSBT_PARSE_OK || !psbt) refuse("Invalid PSBT data");
 
   psbt_gate_t gate = classify_and_gate(psbt);
-  if (gate != PSBT_GATE_ALLOW) refuse(gate_name(gate));
+  if (gate != PSBT_GATE_ALLOW) refuse_gate(gate);
 
   if (sp_psbt_has_fields(psbt)) {
     sp_psbt_result_t r = sp_psbt_complete(&psbt, g_testnet);
     if (r == SP_PSBT_PENDING) refuse("pending: a silent payment script waits for another signer");
     if (r != SP_PSBT_OK) refuse(sp_psbt_result_message(r));
     gate = classify_and_gate(psbt);
-    if (gate != PSBT_GATE_ALLOW) refuse(gate_name(gate));
+    if (gate != PSBT_GATE_ALLOW) refuse_gate(gate);
   }
 
   psbt_sign_policy_t policy = {.allow_unsafe = false, .allow_expected_owned = false};
