@@ -160,7 +160,11 @@ def test_theme_switch_follows_the_system_and_remembers_the_choice():
 def test_bitbox02_firmware_versions_are_separate_signers(tmp_path):
     for version in ("9.26.5", "9.9.1", "9.27.1"):
         run = _run("2026-11-20T00:00:00+00:00")
-        run["adapter"] = {"adapter": "bitbox02", "signer": "BitBox02 firmware simulator", "version": version}
+        run["adapter"] = {
+            "adapter": "bitbox02",
+            "signer": "BitBox02 firmware simulator",
+            "version": version,
+        }
         d = tmp_path / f"bitbox02-v{version}" / "r"
         d.mkdir(parents=True)
         (d / "run.json").write_text(json.dumps(run))
@@ -175,11 +179,14 @@ def test_bitbox02_firmware_versions_are_separate_signers(tmp_path):
 def test_bitbox02_rows_come_after_other_signers(tmp_path):
     for adapter, version in (("bitbox02", "9.27.1"), ("rust-psbt", None), ("embit", None)):
         run = _run("2026-11-20T00:00:00+00:00")
-        run["adapter"] = {"adapter": adapter, "signer": adapter, **({"version": version} if version else {})}
+        run["adapter"] = {"adapter": adapter, "signer": adapter}
+        if version:
+            run["adapter"]["version"] = version
         d = tmp_path / adapter / "r"
         d.mkdir(parents=True)
         (d / "run.json").write_text(json.dumps(run))
-    assert [r["adapter"]["adapter"] for r in load_runs(tmp_path)] == ["embit", "rust-psbt", "bitbox02"]
+    order = [r["adapter"]["adapter"] for r in load_runs(tmp_path)]
+    assert order == ["embit", "rust-psbt", "bitbox02"]
 
 
 def test_partial_suite_is_labelled(tmp_path):
