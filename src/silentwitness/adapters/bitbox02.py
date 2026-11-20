@@ -39,6 +39,7 @@ from .base import Adapter, AdapterUnavailable
 
 HARNESS_DIR = Path(__file__).resolve().parents[3] / "tools" / "bitbox02_harness"
 TIMEOUT_S = 60.0
+SCREEN_LOG_LIMIT = 200_000  # characters of simulator output kept as evidence
 
 # What a PSBT v0 input or output may carry into bitbox-api. Everything v2-only (txid, index,
 # sequence, amount, script, silent-payment fields) is dropped: v0 keeps those in the transaction.
@@ -181,7 +182,7 @@ class BitBox02(Adapter):
             "sp_outputs": {str(i): a for i, a in outputs.items()},
             "coin": case.meta.get("coin", "btc"),
         }
-        resp, problem = self._run_harness(req)
+        resp, problem, screen = self._run_harness(req)
         took = time.monotonic() - start
         if problem:
             return Result(case.id, Outcome.CRASHED, reason=problem, duration_s=took)
@@ -190,7 +191,9 @@ class BitBox02(Adapter):
         if outcome == "skipped":
             return self._skip(case, f"bitbox-api cannot express this case: {reason}")
         if outcome == "refused":
-            return Result(case.id, Outcome.REFUSED, reason=reason, duration_s=took)
+            return Result(
+                case.id, Outcome.REFUSED, reason=reason, shown=screen, duration_s=took
+            )
         if outcome != "signed":
             return Result(
                 case.id,
@@ -204,50 +207,57 @@ class BitBox02(Adapter):
             Outcome.SIGNED,
             returned_psbt=merged.to_base64(),
             reason=f"device generated {len(resp.get('generated', []))} silent-payment output(s)",
+            shown=screen,
             duration_s=took,
         )
 
-    def _run_harness(self, req: dict) -> tuple[dict, str]:
+    def _run_harness(self, req: dict) -> tuple[dict, str, list[str]]:
         """Start a fresh simulator, run the harness against it, stop the simulator.
-        Returns (response, problem); `problem` is set when the harness itself failed."""
+        Returns (response, problem, screen); `problem` is set when the harness itself failed.
+        `screen` is what the simulator printed while the harness ran: the firmware simulator
+        writes the text of its display to stdout."""
         with tempfile.TemporaryDirectory(prefix="sw-bitbox02-") as home:
+            screen_log = Path(home) / "simulator-stdout.txt"
             env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": home}
-            sim = subprocess.Popen(
-                [str(self.simulator)],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                cwd=home,
-                env=env,
-            )
-            try:
+            with screen_log.open("wb") as log:
+                sim = subprocess.Popen(
+                    [str(self.simulator)],
+                    stdin=subprocess.DEVNULL,
+                    stdout=log,
+                    stderr=subprocess.DEVNULL,
+                    cwd=home,
+                    env=env,
+                )
                 try:
-                    proc = subprocess.run(
-                        [str(self.harness)],
-                        input=json.dumps(req),
-                        capture_output=True,
-                        text=True,
-                        timeout=TIMEOUT_S,
-                        env=env,
-                        cwd=home,
-                    )
-                except subprocess.TimeoutExpired:
-                    return {}, f"harness hung past {TIMEOUT_S:.0f}s"
-            finally:
-                sim.terminate()
-                try:
-                    sim.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    sim.kill()
-                    sim.wait()
+                    try:
+                        proc = subprocess.run(
+                            [str(self.harness)],
+                            input=json.dumps(req),
+                            capture_output=True,
+                            text=True,
+                            timeout=TIMEOUT_S,
+                            env=env,
+                            cwd=home,
+                        )
+                    except subprocess.TimeoutExpired:
+                        return {}, f"harness hung past {TIMEOUT_S:.0f}s", []
+                finally:
+                    sim.terminate()
+                    try:
+                        sim.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        sim.kill()
+                        sim.wait()
+            text = screen_log.read_text(errors="replace")[:SCREEN_LOG_LIMIT]
+            screen = [text] if text.strip() else []
         if proc.returncode != 0:
             lines = proc.stderr.strip().splitlines()
             # A Rust panic prints its message after a "panicked at" line; keep that, not the
             # RUST_BACKTRACE hint that follows it.
             at = next((i for i, ln in enumerate(lines) if "panicked at" in ln), None)
             detail = " ".join(lines[at : at + 3]) if at is not None else (lines[-1:] or [""])[0]
-            return {}, f"harness exited {proc.returncode}: {detail}"
+            return {}, f"harness exited {proc.returncode}: {detail}", screen
         try:
-            return json.loads(proc.stdout), ""
+            return json.loads(proc.stdout), "", screen
         except json.JSONDecodeError:
-            return {}, "harness sent garbage"
+            return {}, "harness sent garbage", screen
