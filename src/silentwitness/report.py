@@ -58,7 +58,11 @@ def load_runs(evidence: Path) -> list[dict]:
     # Adapters in name order with the multi-version ones last, firmware versions oldest first.
     return sorted(
         latest.values(),
-        key=lambda r: (r["adapter"].get("adapter") in PER_VERSION, r["adapter"].get("adapter", ""), _version_tuple(r["adapter"].get("version") if _per_version(r["adapter"]) else None)),
+        key=lambda r: (
+            r["adapter"].get("adapter") in PER_VERSION,
+            r["adapter"].get("adapter", ""),
+            _version_tuple(r["adapter"].get("version") if _per_version(r["adapter"]) else None),
+        ),
     )
 
 
