@@ -99,9 +99,17 @@ can go through the translation to its protocol. They use the simulator's fixed p
 
 Tried on firmware 9.27.1 and not expressible: S3b (bitbox-api panics on a P2WSH witness UTXO),
 S9c1–S9c3 (another party's input: "Could not find our key in an input"), S9d (bitbox-api rejects a
-NUMS internal key on the device's own input), D2 (the device refuses an own output that carries an
-sp1 address, and two sp1 outputs), CTRL-ORDER and CTRL-ORDERDESC (the device refuses two sp1
-outputs even to two different recipients: "invalid input"; the cause is not confirmed).
+NUMS internal key on the device's own input), D2 (the firmware rejects an own output that carries
+an sp1 address, and supports one silent-payment output per transaction), CTRL-ORDER and
+CTRL-ORDERDESC (same one-output limit: the `streaming-silent-payments` crate in the firmware
+allows one `create_output` call and fixes `k` at 0, so the k-ordering rule cannot be reached;
+two sp1 outputs are refused with "invalid input", even to two different recipients).
+
+Reasons checked against the firmware source (BitBoxSwiss/bitbox02-firmware, master, read
+2026-11-20): `signtx.rs` rejects an output that is `ours` and carries a silent-payment address
+("Receiving on silent payments is not supported yet"), and signs SIGHASH_ALL only (SIGHASH_DEFAULT
+for taproot) without reading a host sighash; it compares each streamed previous transaction's hash
+with the input's prevout hash, a check it skips when every input is taproot.
 
 ## Resources (real devices only)
 
