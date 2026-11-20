@@ -107,6 +107,8 @@ def bitbox02_cases() -> list[Case]:
     #   S3b           bitbox-api panics on a P2WSH witness UTXO (btc.rs: not yet implemented)
     #   S9c1/S9c2/S9c3 another party's input: "Could not find our key in an input"
     #   S9d           NUMS internal key on the device's own input: bitbox-api rejects the PSBT
+    #   D2            own silent-payment change next to a payment: the device refuses an own
+    #                 output that carries an sp1 address (BB-S2) and two sp1 outputs
     #   CTRL-ORDER*   the device refuses two sp1 outputs even to two different recipients
     #                 ("invalid input"), so the k-ordering rule cannot be reached
     # The BIP 375 vectors and S5/S8/P* need shares, proofs or SP inputs the device never takes.
@@ -125,6 +127,13 @@ def bitbox02_cases() -> list[Case]:
         return psbt
 
     mixed = scenario("bb-mixed", ("wpkh", "tr"))
+
+    # D3: a payment to a labeled sp1 address (label 1); the label is part of the address.
+    labeled = Scenario("bb-labeled", user=user)
+    labeled.add_p2wpkh(IN_P2WPKH, 100_000)
+    labeled.add_p2wpkh(IN_P2WPKH_2, 50_000)
+    labeled.pay_sp(RECIPIENT.scan, RECIPIENT.labeled_spend(1), 80_000)
+    labeled.pay_p2wpkh_change(CHANGE_P2WPKH, 69_000)
 
     return [
         _case(
@@ -184,6 +193,16 @@ def bitbox02_cases() -> list[Case]:
             "Display: the user must see the silent payment address they are paying",
             expect=Expect.DISPLAY,
             expected_display=(sp_address.encode(RECIPIENT.scan, RECIPIENT.spend, hrp="sp"),),
+        ),
+        _case(
+            "BB-D3",
+            "payment to a labeled sp1 address: the screen shows the full labeled address",
+            labeled,
+            "Display: the label is part of the address, so the whole address must show",
+            expect=Expect.DISPLAY,
+            expected_display=(
+                sp_address.encode(RECIPIENT.scan, RECIPIENT.labeled_spend(1), hrp="sp"),
+            ),
         ),
         Case(
             id="BB-S2",
