@@ -52,7 +52,21 @@ def test_registered_and_unavailable_without_binaries(monkeypatch):
 
 
 def test_suite_is_keyed_to_the_simulator_seed():
-    assert set(CASES) == {"BB-CTRL-SEND", "BB-CTRL-TR", "BB-CTRL-MIXED", "BB-S2"}
+    assert set(CASES) == {
+        "BB-CTRL-SEND",
+        "BB-CTRL-TR",
+        "BB-CTRL-MIXED",
+        "BB-CTRL-ORDER",
+        "BB-CTRL-ORDERDESC",
+        "BB-S2",
+        "BB-S3a",
+        "BB-S3b",
+        "BB-S9a",
+        "BB-S9b",
+        "BB-S9c2",
+        "BB-S9c3",
+        "BB-S9d",
+    }
     for case in CASES.values():
         assert case.seed == mod.SIM_MNEMONIC
         assert case.meta["reference_validator"] is False
@@ -226,3 +240,13 @@ def test_s2_signed_by_the_device_is_a_failure(tmp_path):
     assert judgements[case.id].verdict is Verdict.FAIL
     # The BIP 375 reference validator does not apply to a device that never receives shares.
     assert not any("reference validator" in n for n in judgements[case.id].notes)
+
+
+def test_every_case_translates_and_every_control_exists():
+    for case in CASES.values():
+        raw = pr.parse(case.psbt)
+        assert mod.sp_outputs(raw), case.id
+        assert mod.to_psbt_v0(raw), case.id
+        if case.control:
+            assert case.control in CASES, case.id
+            assert CASES[case.control].expect.value == "must_sign"
