@@ -208,7 +208,8 @@ def test_extended_vectors_do_not_make_other_signers_look_partial(tmp_path):
         run = _run("2026-11-20T00:00:00+00:00")
         run["adapter"] = {"adapter": adapter, "signer": adapter}
         run["cases"] = [dict(run["cases"][0], id=f"C{i}") for i in range(5)]
-        run["cases"] += [dict(run["cases"][0], id=f"X{i}", source="ext375-v0") for i in range(extra)]
+        first = run["cases"][0]
+        run["cases"] += [dict(first, id=f"X{i}", source="ext375-v0") for i in range(extra)]
         d = tmp_path / adapter / "r"
         d.mkdir(parents=True)
         (d / "run.json").write_text(json.dumps(run))
