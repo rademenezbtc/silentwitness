@@ -45,6 +45,20 @@ def test_maps_signed_and_refused(tmp_path):
     assert "nothing signable" in r.reason
 
 
+def test_reply_is_merged_into_the_case_psbt():
+    from silentwitness import psbt_raw as pr
+    from silentwitness.adapters.kern import merge_reply
+
+    sent = pr.parse(ATTACKS["CTRL-SEND"].psbt)
+    reply = sent.copy()
+    pr.put(reply.inputs[0], pr.PSBT_IN_PARTIAL_SIG, b"\x30" * 71, b"\x02" * 33)
+    pr.remove(reply.inputs[0], pr.PSBT_IN_NON_WITNESS_UTXO)  # trimmed by the signer
+    merged = pr.parse(merge_reply(ATTACKS["CTRL-SEND"].psbt, reply.to_base64()))
+    assert pr.get(merged.inputs[0], pr.PSBT_IN_PARTIAL_SIG, b"\x02" * 33) == b"\x30" * 71
+    assert pr.get(merged.inputs[0], pr.PSBT_IN_NON_WITNESS_UTXO) is not None
+    assert merge_reply(ATTACKS["CTRL-SEND"].psbt, "AAAA") == "AAAA"
+
+
 def test_sends_mnemonic_network_and_psbt_on_three_lines(tmp_path):
     out = tmp_path / "request.txt"
     adapter = Kern(

@@ -26,11 +26,50 @@ import tempfile
 import time
 from pathlib import Path
 
+from .. import psbt_raw as pr
 from ..model import Case, Outcome, Result
 from .base import Adapter, AdapterUnavailable
 
 TIMEOUT_S = 120.0
 SKIP_NO_SEED = "the case gives raw input keys and Kern only signs from a mnemonic"
+
+
+PSBT_GLOBAL_TX_MODIFIABLE = 0x06
+
+# What Kern adds to a PSBT: its signatures, its ECDH shares and proofs, the output scripts it
+# derives, and the frozen-transaction flag. Everything else in its reply is the trimmed copy of
+# what the coordinator sent.
+ADDED_GLOBAL = (pr.PSBT_GLOBAL_SP_ECDH_SHARE, pr.PSBT_GLOBAL_SP_DLEQ, PSBT_GLOBAL_TX_MODIFIABLE)
+ADDED_INPUT = (
+    pr.PSBT_IN_PARTIAL_SIG,
+    pr.PSBT_IN_TAP_KEY_SIG,
+    pr.PSBT_IN_SP_ECDH_SHARE,
+    pr.PSBT_IN_SP_DLEQ,
+)
+ADDED_OUTPUT = (pr.PSBT_OUT_SCRIPT,)
+
+
+def merge_reply(original_b64: str, reply_b64: str) -> str:
+    """Put what Kern added into the PSBT the case sent, as the coordinator that merges its
+    reply would. Kern trims the PSBT it returns (no previous transactions or derivations), which
+    the judge's checks need. Returns the reply unchanged when it cannot be merged."""
+    try:
+        merged = pr.parse(original_b64)
+        reply = pr.parse(reply_b64)
+    except pr.PSBTParseError:
+        return reply_b64
+    if len(merged.inputs) != len(reply.inputs) or len(merged.outputs) != len(reply.outputs):
+        return reply_b64
+    groups = (
+        (merged.globals, reply.globals, ADDED_GLOBAL),
+        *((m, r, ADDED_INPUT) for m, r in zip(merged.inputs, reply.inputs, strict=True)),
+        *((m, r, ADDED_OUTPUT) for m, r in zip(merged.outputs, reply.outputs, strict=True)),
+    )
+    for into, source, types in groups:
+        for key_type, key_data, value in source:
+            if key_type in types:
+                pr.put(into, key_type, value, key_data)
+    return merged.to_base64()
 
 
 class Kern(Adapter):
@@ -116,10 +155,11 @@ class Kern(Adapter):
             outcome = Outcome(resp["outcome"])
         except (json.JSONDecodeError, KeyError, ValueError, IndexError):
             return Result(case.id, Outcome.CRASHED, reason="harness sent garbage", duration_s=took)
+        reply = resp.get("psbt")
         return Result(
             case.id,
             outcome,
-            returned_psbt=resp.get("psbt"),
+            returned_psbt=merge_reply(case.psbt, reply) if reply else None,
             reason=resp.get("reason", ""),
             duration_s=took,
         )
