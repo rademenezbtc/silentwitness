@@ -2,7 +2,7 @@
 //
 // Lives inside a checkout of bitbox-api-rs that has tools/bitbox02_spike/sp-spike.patch applied:
 // CI copies this file to examples/sw_harness.rs and builds it there (see
-// .github/workflows/bitbox02.yml). It needs `btc_sign_psbt_sp` from that patch.
+// .github/workflows/scorecard.yml). It needs `btc_sign_psbt_sp` from that patch.
 //
 // Reads one JSON request on stdin, connects to a simulator already listening on 127.0.0.1:15423,
 // restores the simulator's fixed mnemonic, signs, and prints one JSON response on stdout:

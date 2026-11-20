@@ -155,3 +155,18 @@ def test_theme_switch_follows_the_system_and_remembers_the_choice():
     # An explicit choice beats the system setting in both directions.
     assert CSS.count("--paper:#141a21") == 2 and CSS.count("--paper:#f4f6f8") == 1
     assert page.index("sw-theme") < page.index("<style>")  # no flash of the wrong theme
+
+
+def test_bitbox02_firmware_versions_are_separate_signers(tmp_path):
+    for version in ("9.26.3", "9.9.1", "9.27.1"):
+        run = _run("2026-11-20T00:00:00+00:00")
+        run["adapter"] = {"adapter": "bitbox02", "signer": "BitBox02 firmware simulator", "version": version}
+        d = tmp_path / f"bitbox02-v{version}" / "r"
+        d.mkdir(parents=True)
+        (d / "run.json").write_text(json.dumps(run))
+    runs = load_runs(tmp_path)
+    assert [r["adapter"]["version"] for r in runs] == ["9.9.1", "9.26.3", "9.27.1"]
+    page = build(tmp_path, tmp_path / "site", tmp_path / "none.json", "https://x").read_text()
+    for version in ("9.9.1", "9.26.3", "9.27.1"):
+        assert f"BitBox02 firmware {version} (simulator)" in page
+        assert f'id="bitbox02-{version}"' in page

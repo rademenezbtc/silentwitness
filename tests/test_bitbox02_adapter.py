@@ -1,6 +1,6 @@
 """BitBox02 adapter plumbing, tested with a stub simulator and stub harness binaries.
 
-The real simulator and bitbox-api-rs run only in CI (.github/workflows/bitbox02.yml)."""
+The real simulator and bitbox-api-rs run only in CI (.github/workflows/scorecard.yml)."""
 
 import json
 import stat

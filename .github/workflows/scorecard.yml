@@ -1,8 +1,9 @@
 name: scorecard
 
-# Runs every suite against every adapter that works in CI (embit, Krux, rust-psbt), builds the
+# Runs every suite against every adapter that works in CI (embit, Krux, rust-psbt, BitBox02 on each firmware simulator), builds the
 # scorecard page and publishes it to GitHub Pages. Only unreleased signer code runs
-# here; released-firmware cases stay private until the disclosure policy allows.
+# here, plus BitBox02 releases whose bug is fixed and public; other released-firmware
+# results stay private until the disclosure policy allows.
 
 on:
   push:
@@ -17,7 +18,100 @@ concurrency:
   group: scorecard-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  BITBOX_API_COMMIT: 0663f047bdbe821ef2bbcda58620b8e828f961df
+
 jobs:
+  # BitBox02: the official firmware simulators, 9.21.0 to 9.27.1, one scorecard row per version.
+  # Third-party code, same rules as Krux: pinned commit, simulators verified by sha256, read-only,
+  # no secrets, only evidence leaves the job. 9.21.0 to 9.26.3 are in the range hit by the
+  # lock-funds bug fixed in 9.26.5 (public: https://blog.bitbox.swiss/en/bitbox-08-2026-dixence-update/),
+  # so the disclosure policy allows publishing them. There is no 9.26.4 simulator. Anything
+  # unexpected on fixed firmware is NOT a known bug: take the page down and follow
+  # docs/disclosure-policy.md. Simulator checksums come from tests/simulators.json at
+  # BITBOX_API_COMMIT in bitbox-api-rs.
+  bitbox02-harness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install stable --profile minimal
+      - name: Fetch bitbox-api-rs at the pinned commit and apply the silent-payment patch
+        run: |
+          git clone https://github.com/BitBoxSwiss/bitbox-api-rs.git "$RUNNER_TEMP/bitbox-api-rs"
+          git -C "$RUNNER_TEMP/bitbox-api-rs" checkout "$BITBOX_API_COMMIT"
+          git -C "$RUNNER_TEMP/bitbox-api-rs" apply --verbose "$GITHUB_WORKSPACE/tools/bitbox02_spike/sp-spike.patch"
+      - name: Build the harness
+        working-directory: ${{ runner.temp }}/bitbox-api-rs
+        run: |
+          cp "$GITHUB_WORKSPACE/tools/bitbox02_harness/harness.rs" examples/sw_harness.rs
+          cargo +stable build --release --features simulator,tokio --example sw_harness
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bitbox02-harness
+          path: ${{ runner.temp }}/bitbox-api-rs/target/release/examples/sw_harness
+          retention-days: 7
+
+  bitbox02:
+    needs: bitbox02-harness
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Affected by the lock-funds bug (9.21.0 to 9.26.4)
+          - { version: v9.21.0, affected: true, sha256: 72031b226ea344970a6a1506893838a63b075e0bad726557ab9d941b42c534f5 }
+          - { version: v9.22.0, affected: true, sha256: 3af12697f6fd51b155bf277ef01ef3eea5290908bff99a4aae83a95cb144ced1 }
+          - { version: v9.23.0, affected: true, sha256: 2740eb4be1abd1eb8603478c7a00874f2bff66e620c229348094a427ae8a1fde }
+          - { version: v9.24.0, affected: true, sha256: a64cefb90461f479e373b5f5dee4f340f07b4619fbcb55c87784f541b4400e34 }
+          - { version: v9.25.1, affected: true, sha256: f4b4294a1a339b3a7d52cc0f4d93a19846099807f03adefab2b42bf9899bd5d4 }
+          - { version: v9.26.1, affected: true, sha256: 91ddf47eb0653ce8b3d3344a8e329fc7fef90adfa51e39c5214830cf6e21cccf }
+          - { version: v9.26.3, affected: true, sha256: 606e1fe6845430a47d1ecbda1df77a3b5e43a5dd164d2568431bbfdc882004dc }
+          # Fixed (9.26.5 and later)
+          - { version: v9.26.5, affected: false, sha256: 21a394c3d7642e0a251b340fba9b601742ae98c3790e439b6258b55e1a4585bf }
+          - { version: v9.27.1, affected: false, sha256: 0b049efb21dcf8a447e9f46c660c731e38fb83101023d4f80f1f423ddaa4126b }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - uses: actions/download-artifact@v4
+        with:
+          name: bitbox02-harness
+          path: ${{ runner.temp }}/harness
+      - name: Fetch the firmware simulator and verify its checksum
+        env:
+          VERSION: ${{ matrix.version }}
+          SHA256: ${{ matrix.sha256 }}
+        run: |
+          # The adapter reads the firmware version from the file name.
+          sim="$RUNNER_TEMP/bitbox02-multi-$VERSION-simulator"
+          curl -sSfL -o "$sim" \
+            "https://github.com/BitBoxSwiss/bitbox02-firmware/releases/download/firmware%2F${VERSION}/bitbox02-multi-${VERSION}-simulator1.0.0-linux-amd64"
+          echo "$SHA256  $sim" | sha256sum -c
+          chmod +x "$sim" "$RUNNER_TEMP/harness/sw_harness"
+      - name: Run the bitbox02 suite against the simulator
+        # On firmware in the affected range a failing attack case is the finding, not a CI error.
+        # On fixed firmware every case must pass.
+        continue-on-error: ${{ matrix.affected }}
+        env:
+          SW_BITBOX02_SIMULATOR: ${{ runner.temp }}/bitbox02-multi-${{ matrix.version }}-simulator
+          SW_BITBOX02_HARNESS: ${{ runner.temp }}/harness/sw_harness
+        run: |
+          silentwitness run --adapter bitbox02 --suite bitbox02 \
+            --out "evidence/bitbox02-${{ matrix.version }}" --note "CI ${{ github.sha }}"
+      - name: Show the verdicts
+        if: always()
+        run: cat evidence/bitbox02-${{ matrix.version }}/*/summary.md
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitbox02-evidence-${{ matrix.version }}
+          path: evidence/bitbox02-${{ matrix.version }}
+          retention-days: 90
+
   # Krux is third-party code: it runs in its own job with read-only permissions and no
   # secrets, at a pinned commit, and only its evidence (data) leaves the job. Bump
   # KRUX_COMMIT to test a newer commit.
@@ -75,7 +169,7 @@ jobs:
           retention-days: 90
 
   build:
-    needs: [krux, rust-psbt]
+    needs: [krux, rust-psbt, bitbox02]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -94,6 +188,10 @@ jobs:
         with:
           name: rust-psbt-evidence
           path: evidence/rust-psbt
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bitbox02-evidence-*
+          path: evidence/bitbox02
       - name: Build scorecard
         run: silentwitness report --evidence evidence --out site
       - uses: actions/upload-artifact@v4

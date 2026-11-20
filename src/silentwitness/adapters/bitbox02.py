@@ -14,7 +14,7 @@ What this means for the results:
 - Only cases keyed to the simulator's fixed mnemonic can be signed (suite "bitbox02").
 
 Third-party code: the simulator is a vendor binary and the harness links bitbox-api-rs. Run both
-only in CI or on a machine without keys. Setup (see .github/workflows/bitbox02.yml):
+only in CI or on a machine without keys. Setup (see .github/workflows/scorecard.yml):
 
     SW_BITBOX02_SIMULATOR   path to the firmware simulator binary (sha256-verified in CI)
     SW_BITBOX02_HARNESS     path to the harness built from tools/bitbox02_harness
@@ -127,7 +127,7 @@ class BitBox02(Adapter):
         if not sim.is_file():
             raise AdapterUnavailable(
                 "BitBox02 simulator not found; set SW_BITBOX02_SIMULATOR to the firmware "
-                "simulator binary (see .github/workflows/bitbox02.yml)"
+                "simulator binary (see .github/workflows/scorecard.yml)"
             )
         if not har.is_file():
             raise AdapterUnavailable(
