@@ -191,9 +191,7 @@ class BitBox02(Adapter):
         if outcome == "skipped":
             return self._skip(case, f"bitbox-api cannot express this case: {reason}")
         if outcome == "refused":
-            return Result(
-                case.id, Outcome.REFUSED, reason=reason, shown=screen, duration_s=took
-            )
+            return Result(case.id, Outcome.REFUSED, reason=reason, shown=screen, duration_s=took)
         if outcome != "signed":
             return Result(
                 case.id,
