@@ -32,9 +32,16 @@ def _bitbox02() -> Adapter:
     return BitBox02()
 
 
+def _kern() -> Adapter:
+    from .kern import Kern
+
+    return Kern()
+
+
 ADAPTERS: dict[str, Callable[[], Adapter]] = {
     "bitbox02": _bitbox02,
     "embit": _embit,
+    "kern": _kern,
     "krux": _krux,
     "rust-psbt": _rust_psbt,
 }

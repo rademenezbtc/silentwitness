@@ -1,6 +1,6 @@
 name: scorecard
 
-# Runs every suite against every adapter that works in CI (embit, Krux, rust-psbt, BitBox02 on each firmware simulator), builds the
+# Runs every suite against every adapter that works in CI (embit, Krux, Kern, rust-psbt, BitBox02 on each firmware simulator), builds the
 # scorecard page and publishes it to GitHub Pages. Only unreleased signer code runs
 # here, plus BitBox02 releases whose bug is fixed and public; other released-firmware
 # results stay private until the disclosure policy allows.
@@ -137,6 +137,46 @@ jobs:
           path: evidence/krux
           retention-days: 90
 
+  # Kern is third-party code too: same rules as Krux. The harness (tools/kern_harness) is built
+  # inside a Kern checkout at a pinned commit with Kern's own host-test Makefile, so it compiles the
+  # firmware's PSBT and BIP 375 code (core/psbt.c, core/sp_psbt.c) as it is. Bump KERN_COMMIT to
+  # test a newer one. Only its evidence leaves the job.
+  kern:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # odudex/Kern PR #221 (draft, "Silent payments"), head of pythcoiner:silent_payments.
+      KERN_REPO: pythcoiner/Kern
+      KERN_COMMIT: dfa5818a5f2c5bc87225cf7e7ecc6be8aef0b469
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: sudo apt-get update && sudo apt-get install -y zlib1g-dev libmbedtls-dev
+      - name: Fetch Kern at the pinned commit
+        run: |
+          git clone "https://github.com/$KERN_REPO.git" "$RUNNER_TEMP/kern"
+          git -C "$RUNNER_TEMP/kern" checkout "$KERN_COMMIT"
+          # Only what the host build needs: libwally-core and bip138.
+          git -C "$RUNNER_TEMP/kern" submodule update --init components/libwally-core/upstream components/bip138
+      - name: Build the harness with Kern's host-test Makefile
+        working-directory: ${{ runner.temp }}/kern/main/core/test
+        run: |
+          cp "$GITHUB_WORKSPACE/tools/kern_harness/sw_kern_harness.c" "$GITHUB_WORKSPACE/tools/kern_harness/harness.mk" .
+          make -f harness.mk sw_kern_harness
+      - name: Run all suites against Kern
+        env:
+          SW_KERN_HARNESS: ${{ runner.temp }}/kern/main/core/test/sw_kern_harness
+          SW_KERN_DIR: ${{ runner.temp }}/kern
+        run: silentwitness run --adapter kern --suite all --out evidence/kern --note "CI ${{ github.sha }}" || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kern-evidence
+          path: evidence/kern
+          retention-days: 90
+
   # rust-psbt (crate psbt-v2, PR #425) is third-party code too: same rules as Krux. The crate
   # commit is pinned in tools/rust_psbt_harness/Cargo.toml and Cargo.lock; bump both to test a
   # newer one. Only its evidence leaves the job.
@@ -161,7 +201,7 @@ jobs:
           retention-days: 90
 
   build:
-    needs: [krux, rust-psbt, bitbox02]
+    needs: [krux, kern, rust-psbt, bitbox02]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -176,6 +216,10 @@ jobs:
         with:
           name: krux-evidence
           path: evidence/krux
+      - uses: actions/download-artifact@v4
+        with:
+          name: kern-evidence
+          path: evidence/kern
       - uses: actions/download-artifact@v4
         with:
           name: rust-psbt-evidence
