@@ -4,7 +4,8 @@ Targets odudex/Kern PR #221 (silent payments, draft, by pythcoiner). The harness
 (tools/kern_harness) is compiled with Kern's own host-test build and follows the firmware's scan
 flow without the screens: parse, classify, the pre-review gate, the BIP 375 share round
 (`sp_psbt_complete`), the review gate, `psbt_sign`, then the same trim and export. The key is
-loaded from the case's public test mnemonic.
+loaded from the case's public test mnemonic. A case that gives raw private keys instead (the
+BIP 375 vectors) runs with a stand-in wallet; see `adapt` and RAW_FINGERPRINT.
 
 Build it (CI does this at a pinned commit; see .github/workflows/scorecard.yml):
 
@@ -27,11 +28,38 @@ import time
 from pathlib import Path
 
 from .. import psbt_raw as pr
-from ..model import Case, Outcome, Result
+from ..crypto import hash160, point, ser_p, taproot_output_key, xonly
+from ..model import Case, Expect, Outcome, Result
+from ..sigcheck import _utxo
 from .base import Adapter, AdapterUnavailable
 
 TIMEOUT_S = 120.0
-SKIP_NO_SEED = "the case gives raw input keys and Kern only signs from a mnemonic"
+SKIP_NO_KEYS = "the case gives neither a mnemonic nor input keys"
+
+# Raw-key mode. Kern holds a seed, not loose keys, and only signs an input whose key origin names
+# its own fingerprint and derives the key. A case that hands over raw private keys therefore runs
+# with a stand-in wallet: the adapter gives each keyed input a standard origin (this fingerprint
+# and a purpose'/1'/0'/0/<input> path), and the harness answers Kern's derivation request for
+# that path with the raw key. Kern's checks, signing and share code run unchanged.
+RAW_FINGERPRINT = bytes.fromhex("5357524b")  # "SWRK", the harness's stand-in master fingerprint
+RAW_MNEMONIC = " ".join(["abandon"] * 11 + ["about"])
+PSBT_IN_TAP_MERKLE_ROOT = 0x18
+SKIP_UNBINDABLE = (
+    "an input's script is not the supplied key's and cannot be rebound (it is not a native "
+    "segwit input with a witness_utxo)"
+)
+SKIP_PARTIAL = "an input has no key: another party signs it, and Kern's partial signing is off"
+SKIP_TAPROOT = (
+    "the vector's silent payment script was computed from the taproot key as given; rebinding the "
+    "input to its BIP 86 output key changes the key BIP 352 uses"
+)
+SKIP_ORIGIN = (
+    "the vector's defect is a missing key origin on an input that carries silent payment fields, "
+    "and the adapter writes that origin"
+)
+SKIP_FEE = "the vector's outputs add up to more than its inputs, which Kern's fee gate refuses"
+HARDENED = 0x80000000
+PURPOSE = {"p2pkh": 44, "p2sh": 49, "p2wpkh": 84, "p2tr": 86}
 
 
 PSBT_GLOBAL_TX_MODIFIABLE = 0x06
@@ -70,6 +98,106 @@ def merge_reply(original_b64: str, reply_b64: str) -> str:
             if key_type in types:
                 pr.put(into, key_type, value, key_data)
     return merged.to_base64()
+
+
+def _script_kind(script: bytes) -> str:
+    if len(script) == 25 and script[:3] == b"\x76\xa9\x14":
+        return "p2pkh"
+    if len(script) == 23 and script[:2] == b"\xa9\x14":
+        return "p2sh"
+    if len(script) == 34 and script[:2] == b"\x51\x20":
+        return "p2tr"
+    if len(script) == 22 and script[:2] == b"\x00\x14":
+        return "p2wpkh"
+    return "other"
+
+
+def _own_script(kind: str, priv_hex: str, root: bytes) -> bytes | None:
+    """The standard native segwit script of this key, or None for a kind that is not rebound."""
+    priv = int(priv_hex, 16)
+    if kind == "p2wpkh":
+        return b"\x00\x14" + hash160(ser_p(point(priv)))
+    if kind == "p2tr":
+        return b"\x51\x20" + xonly(taproot_output_key(priv, root)[1])
+    return None
+
+
+def adapt(
+    psbt_b64: str,
+    keys: dict[int, str],
+    expected_scripts: dict | None = None,
+    must_refuse: bool = False,
+) -> tuple[str | None, str]:
+    """Make a raw-key case something Kern can recognise as its own, as a wallet's coordinator
+    would have built it. Returns (adapted PSBT, "") or (None, why the case cannot run).
+
+    The official vectors fund their inputs with scripts that are not the supplied keys' (they
+    test the ECDH and output maths, not spendability), and Kern refuses an input it cannot tie to
+    its own key. So for each keyed input this
+      - rebinds the witness_utxo script to the key's own native segwit script (outpoints,
+        amounts and every silent-payment field stay as the vector has them), and
+      - writes the key origin Kern's wallet would: the stand-in fingerprint and
+        purpose'/1'/0'/0/<input index>, in place of the vector's placeholder origin.
+      - drops signatures the vector already carries (the "can finalize" vectors are signed by
+        their authors): they would not verify against the rebound script, and Kern signs only
+        inputs that have none.
+    A case that must be refused is skipped when its defect is a missing origin (the one the
+    adapter would write) or a script of a kind that is not rebound (the defect is the kind).
+    The adapted PSBT is what the signer's reply is merged into and what the judge sees."""
+    raw = pr.parse(psbt_b64)
+    if any(i not in keys for i in range(len(raw.inputs))):
+        return None, SKIP_PARTIAL
+    try:
+        funded = sum(_utxo(e)[0] for e in raw.inputs)
+        spent = sum(
+            int.from_bytes(pr.get(e, pr.PSBT_OUT_AMOUNT) or b"", "little") for e in raw.outputs
+        )
+    except (TypeError, ValueError, IndexError):
+        funded = spent = 0
+    if spent > funded:
+        return None, SKIP_FEE
+    precomputed = bool(expected_scripts) or any(
+        pr.get(e, pr.PSBT_OUT_SP_V0_INFO) is not None and pr.get(e, pr.PSBT_OUT_SCRIPT) is not None
+        for e in raw.outputs
+    )
+    for idx, priv_hex in keys.items():
+        entries = raw.inputs[idx]
+        try:
+            amount, script = _utxo(entries)
+        except (TypeError, ValueError, IndexError):
+            return None, SKIP_UNBINDABLE
+        kind = _script_kind(script)
+        sp_fields = (pr.PSBT_IN_SP_ECDH_SHARE, pr.PSBT_IN_SP_DLEQ)
+        origins = (pr.PSBT_IN_BIP32_DERIVATION, pr.PSBT_IN_TAP_BIP32_DERIVATION)
+        if (
+            must_refuse
+            and any(t in sp_fields for t, _, _ in entries)
+            and not any(t in origins for t, _, _ in entries)
+        ):
+            return None, SKIP_ORIGIN
+        root = pr.get(entries, PSBT_IN_TAP_MERKLE_ROOT) or b""
+        own = _own_script(kind, priv_hex, root)
+        if own is None or pr.get(entries, pr.PSBT_IN_WITNESS_UTXO) is None:
+            return None, SKIP_UNBINDABLE
+        if kind == "p2tr" and own != script and precomputed:
+            return None, SKIP_TAPROOT
+        for sig_type in (pr.PSBT_IN_PARTIAL_SIG, pr.PSBT_IN_TAP_KEY_SIG):
+            pr.remove(entries, sig_type)
+        pr.put(
+            entries,
+            pr.PSBT_IN_WITNESS_UTXO,
+            amount.to_bytes(8, "little") + bytes([len(own)]) + own,
+        )
+        path = [PURPOSE[kind] | HARDENED, 1 | HARDENED, HARDENED, 0, idx]
+        origin = RAW_FINGERPRINT + b"".join(n.to_bytes(4, "little") for n in path)
+        pub = point(int(priv_hex, 16))
+        pr.remove(entries, pr.PSBT_IN_BIP32_DERIVATION)
+        pr.remove(entries, pr.PSBT_IN_TAP_BIP32_DERIVATION)
+        if kind == "p2tr":
+            pr.put(entries, pr.PSBT_IN_TAP_BIP32_DERIVATION, b"\x00" + origin, xonly(pub))
+        else:
+            pr.put(entries, pr.PSBT_IN_BIP32_DERIVATION, origin, ser_p(pub))
+    return raw.to_base64(), ""
 
 
 class Kern(Adapter):
@@ -119,9 +247,19 @@ class Kern(Adapter):
                 Outcome.SKIPPED,
                 reason="needs another party's ECDH shares; this adapter holds one signer's keys",
             )
-        if not case.seed:
-            return Result(case.id, Outcome.SKIPPED, reason=SKIP_NO_SEED)
-        request = f"{case.seed}\n1\n{case.psbt}\n"  # testnet: the cases use coin type 1
+        psbt = None  # the adapted PSBT, in raw-key mode
+        if case.seed:
+            request = f"{case.seed}\n1\n{case.psbt}\n"  # testnet: the cases use coin type 1
+        elif case.input_keys:
+            psbt, why = adapt(
+                case.psbt, case.input_keys, case.expected_scripts, case.expect is Expect.REFUSE
+            )
+            if psbt is None:
+                return Result(case.id, Outcome.SKIPPED, reason=why)
+            keys = ",".join(f"{i}={k}" for i, k in sorted(case.input_keys.items()))
+            request = f"{RAW_MNEMONIC}\n1\n{psbt}\n{keys}\n"
+        else:
+            return Result(case.id, Outcome.SKIPPED, reason=SKIP_NO_KEYS)
         with tempfile.TemporaryDirectory(prefix="sw-kern-") as home:
             env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": home}
             try:
@@ -159,7 +297,7 @@ class Kern(Adapter):
         return Result(
             case.id,
             outcome,
-            returned_psbt=merge_reply(case.psbt, reply) if reply else None,
+            returned_psbt=merge_reply(psbt or case.psbt, reply) if reply else None,
             reason=resp.get("reason", ""),
             change={int(i): bool(v) for i, v in resp["change"].items()}
             if "change" in resp
