@@ -16,6 +16,26 @@ devices loaded with the test seed.
 20 valid (14 *can finalize*, 6 *in progress*). Case ids `BIP375-I01…I24` and
 `BIP375-V01…V20` follow the order in the vector file. **Status: done.**
 
+### Raw keys on a signer that holds a seed (Kern)
+
+The vectors give raw private keys, and their funding scripts are unrelated to those keys (they
+test the ECDH and output maths, not spendability). A signer that checks ownership, as Kern does,
+refuses an input it cannot tie to its own key. The `kern` adapter therefore runs a vector on an
+*adapted* PSBT and says so in the report:
+
+- the harness answers Kern's key lookup for a stand-in wallet (fingerprint `SWRK`, path
+  `purpose'/1'/0'/0/<input>`) with the vector's raw key; every check and the signing are Kern's own;
+- each keyed input's `witness_utxo` script is rebound to its key's native segwit script (p2wpkh, or
+  p2tr with the BIP 86 tweak or the input's merkle root), a key origin for the stand-in wallet is
+  written, and signatures the vector already carries are dropped. Outpoints, amounts and every
+  silent payment field stay the vector's.
+
+Of the 44, 24 run (23 pass, 1 fail). The other 20 are skipped, each with its reason: no private key
+in the vector (9); outputs exceeding inputs, which Kern's fee gate refuses (I24, V15); a defect
+that the adaptation would erase (a missing key origin: I14, I21; a script kind that is the defect:
+I18); a legacy input (V01); an input with no key, which needs partial signing (V10, V11, V19); a
+taproot script computed from the key as given (V12, V20).
+
 There are no official BIP 376 vectors yet: [bips #2139](https://github.com/bitcoin/bips/pull/2139), which added them, was closed unmerged on 2026-09-23. They will be added if and when a replacement lands.
 
 ## Controls
