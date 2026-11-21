@@ -408,6 +408,7 @@ def _send_cases() -> list[Case]:
             expected_scripts=s1.expected_scripts(),
             sp_shares=s1.sp_shares(),
             expected_change={0: False, 1: False},
+            refusal_ok=True,  # refusing a change claim it cannot verify is also safe
         )
     )
 

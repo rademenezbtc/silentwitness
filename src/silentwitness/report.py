@@ -90,6 +90,8 @@ def _signer_name(run: dict) -> str:
         return f"{name} (PR #145)"
     if name == "krux":
         return "Krux (PR #925)" if "notTanveer/krux" in source else "Krux"
+    if name == "Kern":
+        return "Kern (PR #221)" if "pythcoiner/Kern" in source else "Kern"
     if name.startswith("rust-psbt"):
         return "rust-psbt (PR #425)" if "macgyver/rust-psbt" in source else "rust-psbt"
     if a.get("adapter") == "bitbox02":
