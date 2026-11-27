@@ -8,6 +8,7 @@
  *         -> classify -> review gate -> psbt_sign -> trim -> serialize
  *
  * stdin:  line 1 the mnemonic, line 2 "1" for testnet or "0", line 3 the PSBT in base64.
+ *         Optional line 4, raw-key mode: "<input>=<private key hex>,..." (see below).
  * stdout: one JSON line {"outcome": "signed"|"refused"|"crashed", "reason": "...", "psbt": "..."}.
  * Every string in the output is either fixed text from this file or base64.
  */
@@ -19,6 +20,7 @@
 
 #include <wally_bip32.h>
 #include <wally_core.h>
+#include <wally_crypto.h>
 #include <wally_psbt.h>
 
 #include "core/crypto_init.h"
@@ -68,7 +70,71 @@ bool settings_get_permissive_signing(void) { return false; }
 /* psbt.c is linked against key.c compiled with key_get_fingerprint renamed (the unit tests
  * replace it); here the real one is what is wanted. */
 extern bool key_get_fingerprint_raw(unsigned char *fingerprint_out);
-bool key_get_fingerprint(unsigned char *fp) { return key_get_fingerprint_raw(fp); }
+
+/* Raw-key mode. Kern holds a seed, so a case that gives loose private keys runs with a stand-in
+ * wallet: the adapter writes each keyed input an origin (fingerprint "SWRK", path
+ * purpose'/1'/0'/0/<input index>) and this table answers Kern's derivation request for that path
+ * with the raw key. Only the key lookup is replaced; every check and the signing run as in the
+ * firmware. Without line 4 nothing here is used and keys come from the mnemonic. */
+#define RAW_MAX_INPUTS 64
+static bool g_raw = false;
+static bool g_raw_have[RAW_MAX_INPUTS];
+static unsigned char g_raw_key[RAW_MAX_INPUTS][32];
+static const unsigned char RAW_FP[4] = {0x53, 0x57, 0x52, 0x4b};
+
+bool key_get_fingerprint(unsigned char *fp) {
+  if (g_raw) {
+    memcpy(fp, RAW_FP, sizeof(RAW_FP));
+    return true;
+  }
+  return key_get_fingerprint_raw(fp);
+}
+
+/* key.c is compiled with this renamed (see harness.mk); it is the seed's derivation. */
+extern bool key_get_derived_key_components_seed(const uint32_t *path, size_t path_depth,
+                                                struct ext_key **key_out);
+
+bool key_get_derived_key_components(const uint32_t *path, size_t path_depth,
+                                    struct ext_key **key_out) {
+  const uint32_t H = 0x80000000u;
+  if (g_raw && path && path_depth == 5 && (path[0] == (44 | H) || path[0] == (49 | H) ||
+                                           path[0] == (84 | H) || path[0] == (86 | H)) &&
+      path[1] == (1 | H) && path[2] == H && path[3] == 0 && path[4] < RAW_MAX_INPUTS &&
+      g_raw_have[path[4]]) {
+    static const unsigned char chain_code[32] = {0};
+    *key_out = NULL;
+    unsigned char priv[33] = {0};
+    memcpy(priv + 1, g_raw_key[path[4]], 32);
+    unsigned char pub[33];
+    if (wally_ec_public_key_from_private_key(priv + 1, 32, pub, sizeof(pub)) != WALLY_OK)
+      return false;
+    int rc = bip32_key_init_alloc(BIP32_VER_TEST_PRIVATE, 5, path[4], chain_code,
+                                  sizeof(chain_code), pub, sizeof(pub), priv + 1, 32, NULL, 0,
+                                  NULL, 0, key_out);
+    return rc == WALLY_OK;
+  }
+  return key_get_derived_key_components_seed(path, path_depth, key_out);
+}
+
+static bool load_raw_keys(const char *line) {
+  const char *p = line;
+  while (*p) {
+    char *end;
+    unsigned long idx = strtoul(p, &end, 10);
+    if (end == p || *end != '=' || idx >= RAW_MAX_INPUTS) return false;
+    p = end + 1;
+    for (int i = 0; i < 32; i++) {
+      unsigned int byte;
+      if (sscanf(p + 2 * i, "%2x", &byte) != 1) return false;
+      g_raw_key[idx][i] = (unsigned char)byte;
+    }
+    p += 64;
+    g_raw_have[idx] = true;
+    if (*p == ',') p++;
+    else if (*p) return false;
+  }
+  return true;
+}
 
 /* --- output --- */
 static void emit_with_change(const char *outcome, const char *reason, const char *psbt_b64,
@@ -170,6 +236,14 @@ int main(void) {
     return 2;
   }
   g_testnet = net[0] == '1';
+  static char raw_keys[RAW_MAX_INPUTS * 80];
+  if (read_line(raw_keys, sizeof(raw_keys)) && raw_keys[0]) {
+    if (!load_raw_keys(raw_keys)) {
+      emit("crashed", "bad raw key line", NULL);
+      return 2;
+    }
+    g_raw = true;
+  }
   if (!crypto_init()) {
     emit("crashed", "crypto_init failed", NULL);
     return 2;
